@@ -8,7 +8,7 @@ Alpha = Portfolio Return - SPY Return
 
 ---
 
-## Remediation Summary (2026-03-17)
+## Remediation Summary (2026-03-18 update)
 
 All 7 CRITICAL and 10 of 11 HIGH findings have been resolved. H4 (single GBM model / ensemble) is deferred to Phase 4 model evolution work.
 
@@ -19,6 +19,14 @@ All 7 CRITICAL and 10 of 11 HIGH findings have been resolved. H4 (single GBM mod
 | **Total** | **18** | **17** | **1** | **94%** |
 
 **Remaining open:** H4 (3-model ensemble — deferred, multi-week project)
+
+Additionally, significant progress on optimization opportunities since audit creation:
+- **O6 (SHAP monitoring):** DONE 2026-03-18 — TreeExplainer in weekly retrain + week-over-week Spearman rank drift detection
+- **O8 (MIN_SAMPLES):** DONE 2026-03-18 — raised to 30 across signal_quality, regime_analysis, score_analysis
+- **O10 (PEAD):** DONE 2026-03-18 — FMP earnings surprise fetcher in Research + Predictor features (earnings_surprise, earnings_recency)
+- **O11 (Earnings revisions):** DONE 2026-03-18 — FMP EPS consensus diff in Research + Predictor features (eps_revision_pct, revision_streak)
+- **O12 (Options signals):** DONE 2026-03-18 — yfinance options chain in Research + Predictor features (put_call_ratio, iv_rank, iv_vs_realized)
+- **O13 (Insider scanner):** DONE 2026-03-18 — EdgarTools Form 4 parser in Research (cluster buying detection, sentiment scoring)
 
 **Repos updated:** alpha-engine (executor), alpha-engine-backtester, alpha-engine-predictor, alpha-engine-research, alpha-engine-dashboard
 
@@ -42,16 +50,16 @@ All 7 CRITICAL and 10 of 11 HIGH findings have been resolved. H4 (single GBM mod
 
 ### Still Open from Prior Audit
 
-| # | Item | Prior Status |
-|---|------|-------------|
-| 6 | Entry momentum confirmation gate | Open |
-| 8 | ATR-based position sizing | Open |
-| 9 | SHAP feature importance monitoring | Open |
-| 10 | Confidence-weighted sizing from Predictor | Open |
-| 11 | PEAD signal integration | Open |
-| 12 | 3-model ensemble | Open |
-| 13 | Insider trading scanner | Open |
-| 14 | HMM regime detection | Open |
+| # | Item | Prior Status | Current Status |
+|---|------|-------------|----------------|
+| 6 | Entry momentum confirmation gate | Open | Open |
+| 8 | ATR-based position sizing | Open | Open |
+| 9 | SHAP feature importance monitoring | Open | **DONE 2026-03-18** — TreeExplainer + Spearman drift in train_handler.py |
+| 10 | Confidence-weighted sizing from Predictor | Open | Open |
+| 11 | PEAD signal integration | Open | **DONE 2026-03-18** — Research fetcher + Predictor features |
+| 12 | 3-model ensemble | Open | Open — deferred to Phase 4 |
+| 13 | Insider trading scanner | Open | **DONE 2026-03-18** — EdgarTools Form 4 in Research |
+| 14 | HMM regime detection | Open | Open |
 
 ---
 
@@ -108,9 +116,9 @@ long_term_score = news_lt * 0.50 + research_lt * 0.50 + macro_shift
 
 | Data Source | Status | Alpha Impact | Cost |
 |-------------|--------|-------------|------|
-| Options put/call ratio & IV skew | Missing | HIGH — validates/contradicts analyst sentiment | Free (yfinance options chain) |
-| Earnings revision trends (week-over-week EPS consensus) | Missing | HIGH — "revisions up" is strong bullish signal | Free (diff FMP weekly) |
-| SEC Form 4 insider transactions | Missing | MEDIUM — cluster buying is 6-12 month signal | Free (EdgarTools) |
+| Options put/call ratio & IV skew | **DONE 2026-03-18** — `options_fetcher.py` (yfinance chain) | HIGH — validates/contradicts analyst sentiment | Free (yfinance options chain) |
+| Earnings revision trends (week-over-week EPS consensus) | **DONE 2026-03-18** — `revision_fetcher.py` (FMP API) | HIGH — "revisions up" is strong bullish signal | Free (diff FMP weekly) |
+| SEC Form 4 insider transactions | **DONE 2026-03-18** — `insider_fetcher.py` (EdgarTools) | MEDIUM — cluster buying is 6-12 month signal | Free (EdgarTools) |
 | Short interest & borrow rates | Missing | MEDIUM — crowded trade risk flag | Free (finviz scrape) |
 | Leading indicators (ISM PMI, jobless claims) | Missing | MEDIUM — leads equity drawdowns 3-6 months | Free (FRED) |
 | Credit spreads (HY-Treasury OAS) | Missing | MEDIUM — risk-on/off indicator | Free (FRED) |
@@ -160,7 +168,7 @@ long_term_score = news_lt * 0.50 + research_lt * 0.50 + macro_shift
 - **Model**: Single LightGBM regression
 - **Objective**: MSE (mean squared error)
 - **Target**: 5-day sector-neutral alpha (stock return - sector ETF return)
-- **Features**: 24 GBM features (34 total, 5 macro-only excluded from GBM)
+- **Features**: 36 GBM features (41 total, 5 macro-only excluded from GBM) — expanded from 24/34 with PEAD, revision, and options features
 - **Training**: Walk-forward expanding window, 2000 estimators, early stopping at 50 rounds
 - **IC Gate**: test_ic >= 0.03, IC IR >= 0.3 for weight promotion
 - **Latest Performance**: test IC ~0.046, IC IR ~0.421
@@ -183,11 +191,11 @@ long_term_score = news_lt * 0.50 + research_lt * 0.50 + macro_shift
 |-----------------|---------|---------|
 | Momentum | 7+ variants (RSI, MACD, momentum_5d/20d, price_accel) | VWAP divergence, buying/selling pressure |
 | Volume | rel_volume_ratio, volume_trend, obv_slope | Volume profile, VWAP distance |
-| Volatility | atr_14_pct, realized_vol_20d, vol_ratio_10_60 | Options-implied vol, IV rank |
+| Volatility | atr_14_pct, realized_vol_20d, vol_ratio_10_60, **iv_rank, iv_vs_realized** (NEW) | ~~Options-implied vol, IV rank~~ |
 | Cross-asset | sector_vs_spy_5d | Beta vs sector, correlation vs peers, breadth |
 | Macro | VIX, yields, gold/oil momentum | Credit spreads, PMI, real rates |
 | Regime interactions | 5 interaction terms (v1.5) | Yield curve × sector sensitivity |
-| Fundamental | None | Earnings surprise, analyst revisions |
+| Fundamental | **earnings_surprise, earnings_recency, eps_revision_pct, revision_streak, put_call_ratio** (NEW) | ~~Earnings surprise, analyst revisions~~ |
 
 5. **Macro features have zero cross-sectional power** — VIX, yields, gold/oil momentum are identical for all tickers on a given date. They only help GBM learn regime-dependent splits but contribute nothing to cross-sectional ranking. The v1.5 interaction terms (mom5d_x_vix, etc.) partially address this but more cross-asset features needed.
 
@@ -201,11 +209,11 @@ long_term_score = news_lt * 0.50 + research_lt * 0.50 + macro_shift
 
 **Monitoring Gaps:**
 
-9. **No feature importance drift monitoring** — top 10 features logged in training emails but no week-over-week comparison or alerting when feature rankings shift dramatically.
+9. ~~**No feature importance drift monitoring** — top 10 features logged in training emails but no week-over-week comparison or alerting when feature rankings shift dramatically.~~ **FIXED 2026-03-18** — SHAP values saved to S3 weekly (`predictor/metrics/shap_{date}.json`); Spearman rank correlation computed vs prior week; drift warning at rho < 0.80; comparison table (Gain vs SHAP rank) in training email.
 
 10. **No per-feature IC tracking** — only aggregate IC monitored. Individual feature predictive power could degrade silently.
 
-11. **Gain-based feature importance is biased** — high-variance features (VIX, momentum) score high even if noisy. SHAP TreeExplainer would give more reliable incremental importance.
+11. ~~**Gain-based feature importance is biased** — high-variance features (VIX, momentum) score high even if noisy. SHAP TreeExplainer would give more reliable incremental importance.~~ **FIXED 2026-03-18** — SHAP TreeExplainer added to weekly retrain; top-10 SHAP vs Gain comparison with divergence flagging in training email.
 
 **Label Construction Gaps:**
 
@@ -267,7 +275,7 @@ Backup trades.db to S3
 
 15. **No signal staleness discount** — a 5-day-old signal is treated identically to today's signal. No score reduction for signal age.
 
-16. **No earnings date awareness** — positions hold through earnings with no volatility adjustment or risk reduction.
+16. **No earnings date awareness** — positions hold through earnings with no volatility adjustment or risk reduction. *Partial: executor now logs a warning when entering within 2 days of earnings (2026-03-18), but no sizing adjustment or hold-through-earnings logic yet.*
 
 17. **S3 param load failure is silent** — if backtester-optimized params can't be read from S3, executor runs with defaults and logs at DEBUG level (not WARNING).
 
@@ -300,9 +308,9 @@ Backup trades.db to S3
 
 3. ~~**No confidence intervals** — accuracy reported as "58%" without Wilson score interval. On 10 samples, 95% CI is [33%, 77%] — statistically indistinguishable from coin flip.~~ **FIXED 2026-03-17** — Wilson score 95% CIs on all accuracy metrics via _wilson_ci()
 
-4. **MIN_SAMPLES = 10 is too low** — 10 samples is dangerously small for any statistical conclusion. Should be ≥30 minimum. *Open*
+4. ~~**MIN_SAMPLES = 10 is too low** — 10 samples is dangerously small for any statistical conclusion. Should be ≥30 minimum.~~ **FIXED 2026-03-18** — MIN_SAMPLES raised to 30 in signal_quality.py; propagated to regime_analysis.py and score_analysis.py via shared import.
 
-5. **Score bucket analysis reports buckets with <20 samples** — small buckets are unreliable but displayed without caveat. *Open*
+5. ~~**Score bucket analysis reports buckets with <20 samples** — small buckets are unreliable but displayed without caveat.~~ **FIXED 2026-03-18** — MIN_SAMPLES=30 now applies to score bucket analysis via shared constant.
 
 **Simulation Realism Gaps (CRITICAL):**
 
@@ -403,19 +411,19 @@ Backup trades.db to S3
 | O3 | **Entry momentum confirmation gate** — 5d momentum > 0, price above 20d MA | Executor | Reduces bad entries 15-25% | 1 day |
 | O4 | **Confidence-weighted sizing** — map p_up to continuous multiplier instead of binary veto | Executor | Better use of predictor signal | 1 day |
 | O5 | **ATR-based position sizing** — `risk_per_trade / ATR` for volatility-aware sizing | Executor | Prevents single-stock blowups in volatile names | 1 day |
-| O6 | **SHAP feature importance monitoring** — add TreeExplainer to weekly retrain | Predictor | Detect feature drift, guide pruning | 1 day |
+| O6 | ~~**SHAP feature importance monitoring** — add TreeExplainer to weekly retrain~~ | Predictor | Detect feature drift, guide pruning | 1 day | **DONE** |
 | O7 | ~~**Add p-values and confidence intervals** to all backtester statistics~~ | Backtester | Prevent false-positive-driven optimization | 1 day | **DONE** |
-| O8 | **Raise MIN_SAMPLES to 30**, flag buckets <20 as exploratory | Backtester | More reliable statistical conclusions | 0.5 day |
+| O8 | ~~**Raise MIN_SAMPLES to 30**, flag buckets <20 as exploratory~~ | Backtester | More reliable statistical conclusions | 0.5 day | **DONE** |
 
 ### Tier 2: Medium Effort, High Payoff (3-7 days each)
 
 | # | Opportunity | Module | Expected Impact | Effort |
 |---|------------|--------|----------------|--------|
 | O9 | **3-model stacking ensemble** — LightGBM + XGBoost + CatBoost with linear meta-learner | Predictor | +10-15% accuracy improvement | 5 days |
-| O10 | **PEAD signal integration** — earnings surprise direction + magnitude as feature and score boost | Research + Predictor | Well-documented alpha source (6.78% quarterly excess in top quintile) | 3 days |
-| O11 | **Earnings revision tracking** — weekly diff of FMP EPS consensus, add as predictor feature | Research + Predictor | Strong short-term signal | 2 days |
-| O12 | **Options-derived signals** — put/call ratio, IV rank from yfinance options chain | Research + Predictor | Orthogonal to momentum-heavy feature set | 3 days |
-| O13 | **Insider trading scanner** — SEC Form 4 cluster buying via EdgarTools | Research | 6-12 month signal, zero data cost | 2 days |
+| O10 | ~~**PEAD signal integration** — earnings surprise direction + magnitude as feature and score boost~~ | Research + Predictor | Well-documented alpha source (6.78% quarterly excess in top quintile) | 3 days | **DONE** |
+| O11 | ~~**Earnings revision tracking** — weekly diff of FMP EPS consensus, add as predictor feature~~ | Research + Predictor | Strong short-term signal | 2 days | **DONE** |
+| O12 | ~~**Options-derived signals** — put/call ratio, IV rank from yfinance options chain~~ | Research + Predictor | Orthogonal to momentum-heavy feature set | 3 days | **DONE** |
+| O13 | ~~**Insider trading scanner** — SEC Form 4 cluster buying via EdgarTools~~ | Research | 6-12 month signal, zero data cost | 2 days | **DONE** |
 | O14 | ~~**Regime-adaptive label thresholds** — percentile-based UP/DOWN instead of fixed ±1%~~ | Predictor | Better label quality across volatility regimes | 2 days | **DONE** |
 | O15 | ~~**Cross-validation in weight optimizer** — 70/30 train/test split, validate before applying~~ | Backtester | Prevents overfitted weight recommendations | 2 days | **DONE** |
 | O16 | ~~**Recommendation rollback mechanism** — store previous params, auto-revert on degradation~~ | Backtester | Safety net for auto-optimization | 2 days | **DONE** |
@@ -583,7 +591,7 @@ regime_thresholds:
 | 2 | Add transaction costs to VectorBT (10 bps) | Backtester | 0.5 day | CRITICAL | **DONE 2026-03-17** |
 | 3 | Experiment with lambdarank loss (optimization opportunity, current MSE+IC gate design is sound) | Predictor | 2 days | MEDIUM | Open |
 | 4 | Add p-values + CI to backtester statistics | Backtester | 1 day | HIGH | **DONE 2026-03-17** |
-| 5 | Raise MIN_SAMPLES to 30 | Backtester | 0.5 day | HIGH | Open |
+| 5 | Raise MIN_SAMPLES to 30 | Backtester | 0.5 day | HIGH | **DONE 2026-03-18** |
 | 6 | Add market hours gate | Executor | 0.5 day | HIGH | **DONE 2026-03-17** |
 | 7 | Fix silent exception swallowing in fetchers | Research | 1 day | HIGH | **DONE 2026-03-17** |
 
@@ -594,7 +602,7 @@ regime_thresholds:
 | 8 | Entry momentum confirmation gate | Executor | 1 day | HIGH | Open |
 | 9 | ATR-based position sizing | Executor | 1 day | HIGH | Open |
 | 10 | Confidence-weighted sizing from predictor | Executor | 1 day | HIGH | Open |
-| 11 | SHAP feature importance monitoring | Predictor | 1 day | MEDIUM | Open |
+| 11 | SHAP feature importance monitoring | Predictor | 1 day | MEDIUM | **DONE 2026-03-18** |
 | 12 | Cross-validation in weight optimizer | Backtester | 2 days | HIGH | **DONE 2026-03-17** |
 | 13 | Recommendation rollback mechanism | Backtester | 1 day | MEDIUM | **DONE 2026-03-17** |
 
@@ -602,10 +610,10 @@ regime_thresholds:
 
 | # | Item | Module | Effort | Priority | Status |
 |---|------|--------|--------|----------|--------|
-| 14 | PEAD signal integration | Research + Predictor | 3 days | HIGH | Open |
-| 15 | Earnings revision tracking | Research + Predictor | 2 days | HIGH | Open |
-| 16 | Options-derived signals (put/call, IV rank) | Research + Predictor | 3 days | MEDIUM | Open |
-| 17 | Insider trading scanner (Form 4) | Research | 2 days | MEDIUM | Open |
+| 14 | PEAD signal integration | Research + Predictor | 3 days | HIGH | **DONE 2026-03-18** |
+| 15 | Earnings revision tracking | Research + Predictor | 2 days | HIGH | **DONE 2026-03-18** |
+| 16 | Options-derived signals (put/call, IV rank) | Research + Predictor | 3 days | MEDIUM | **DONE 2026-03-18** |
+| 17 | Insider trading scanner (Form 4) | Research | 2 days | MEDIUM | **DONE 2026-03-18** |
 | 18 | Regime-adaptive label thresholds | Predictor | 2 days | MEDIUM | **DONE 2026-03-17** |
 
 ### Phase 4: Model Evolution (Week 9-12)
@@ -655,3 +663,29 @@ regime_thresholds:
 - JPM Factor Views Q1 2026 — Value leading, growth weakest
 - EdgarTools — Free Python library for SEC insider/institutional data
 - FRED API — Free macroeconomic data (120 calls/min)
+
+---
+
+## Open Items from Completed Work (2026-03-18)
+
+The following new items were identified while reviewing recently completed work:
+
+### API / Deployment Setup Required
+
+| # | Item | Module | Status | Notes |
+|---|------|--------|--------|-------|
+| D1 | **FMP_API_KEY not confirmed in Lambda environment** | Research Lambda, Predictor Lambda | **NEEDS VERIFICATION** | `revision_fetcher.py`, `analyst_fetcher.py` (Research) and `earnings_fetcher.py` (Predictor) all require `FMP_API_KEY`. Code raises `RuntimeError` if missing. Verify env var is set in both Lambda functions and EC2 cron environments. FMP free tier: 250 req/day — monitor usage as ticker count grows. |
+| D2 | **FRED_API_KEY not confirmed in Lambda environment** | Research Lambda | **NEEDS VERIFICATION** | `macro_fetcher.py` has an explicit `OPEN ITEM` comment at line 4 noting this. Code raises `RuntimeError` if missing. Pre-existing requirement but may not be deployed. |
+| D3 | **edgartools package in Lambda deployment** | Research Lambda | **NEEDS VERIFICATION** | `insider_fetcher.py` gracefully degrades if edgartools not installed (returns empty results), but the feature is silently disabled. Verify edgartools is in the Lambda deployment package. Package has native dependencies that may need a Lambda layer. |
+| D4 | **shap package in Lambda/EC2 deployment** | Predictor Lambda | **NEEDS VERIFICATION** | `train_handler.py` gracefully degrades if SHAP fails (non-blocking warning), but drift detection is disabled. SHAP has numpy/scipy deps — verify it's in the Lambda deployment package or training runs on EC2 where pip install is simpler. |
+| D5 | **SEC EDGAR identity/user-agent not configured** | Research | **NEEDS VERIFICATION** | SEC EDGAR requires a User-Agent header with company name + email for programmatic access. EdgarTools may handle this automatically, but rate limiting (10 req/sec) compliance should be verified. No `EDGAR_IDENTITY` env var found in config. |
+
+### Functional Gaps from New Fetchers
+
+| # | Item | Module | Notes |
+|---|------|--------|-------|
+| F1 | **New fetchers not wired into Research Lambda handler** | Research | `insider_fetcher`, `options_fetcher`, `revision_fetcher` are imported and called in `graph/research_graph.py`, but `lambda/handler.py` does not reference them directly. Verify the graph orchestrator is correctly invoked and fetchers execute during the Monday Lambda run. |
+| F2 | **Predictor earnings/options fetchers need FMP_API_KEY in inference Lambda** | Predictor | `daily_predict.py` imports `earnings_fetcher` and `options_fetcher` at inference time (daily 6:15 AM). These fetchers call FMP API — verify the inference Lambda has `FMP_API_KEY` set, not just the training Lambda. |
+| F3 | **Options fetcher slow for large ticker lists** | Research + Predictor | yfinance options chain is ~1-2 sec/ticker with 0.5s delay. For 50 candidates, that's ~75 seconds. For the predictor's full universe, this could timeout Lambda (15 min limit). Verify fetcher is only called for buy candidates, not full universe. |
+| F4 | **No backfill of new features for historical training data** | Predictor | The 7 new GBM features (earnings_surprise, earnings_recency, eps_revision_pct, revision_streak, put_call_ratio, iv_rank, iv_vs_realized) have no historical values in the training price cache. Weekly retrain will have NaN/zero for these features on all historical dates. Verify feature_engineer handles missing alternative data gracefully (fills with neutral values) so GBM training doesn't break. |
+| F5 | **Earnings proximity warning is log-only** | Executor | `main.py` logs a warning when entering within 2 days of earnings, but does not adjust position sizing or block entry. This is informational only — the full earnings-aware sizing (item #16 in Executor gaps) remains unimplemented. |
