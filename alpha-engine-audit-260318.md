@@ -19,7 +19,7 @@ Alpha = Portfolio Return - SPY Return
 | Backtester gaps | 10 |
 | Dashboard gaps | 14 |
 | Optimization opportunities | 10 |
-| Deployment/functional items | 1 (D7 — monitor only) |
+| Deployment/functional items | 0 (all resolved) |
 
 ---
 
@@ -416,12 +416,11 @@ regime_thresholds:
 - **F4 — No backfill of new features**: `feature_engineer.py:508-538` explicitly fills neutral values for all 7 O10-O12 features when data is missing. `dropna(subset=feature_cols)` ensures clean feature vectors. Historical parquets don't need backfill because alternative data is fetched fresh at inference/training time.
 - **F5 — Earnings proximity sizing**: `position_sizer.py:95-104` implements full earnings-aware sizing: `earnings_sizing_enabled` defaults to `True`, reduces position size by 50% when `days_to_earnings <= 5`. The log-only warning in `main.py` is a separate notification, not the only behavior.
 - **D6 — FRED_API_KEY in Research Lambda**: Key is set in Research `.env`. `infrastructure/deploy.sh` reads all non-LAMBDA_SKIP vars from `.env` and passes them to Lambda via `--environment` flag. Deployed automatically on every `deploy.sh` run.
+- **D7 — Predictor Lambda container image migration**: Migrated from ZIP to container image (ECR). Dockerfile updated with `dnf install -y libgomp` for LightGBM. `.dockerignore` added to exclude `data/cache/` and dev artifacts. Lambda function recreated with `PackageType=Image`, all env vars and 3 EventBridge rules (daily inference, signals trigger, weekly training) restored. No more 250MB ZIP limit.
 
 ### Still Open
 
-| # | Item | Module | Notes |
-|---|------|--------|-------|
-| D7 | **Predictor Lambda container image migration** | Predictor | ZIP deployment is ~153 MB (under 250 MB limit). Container infrastructure (Dockerfile, ECR repo) is prepared as fallback. Monitor package size — no blocker today. |
+All deployment/functional items resolved.
 
 ---
 
