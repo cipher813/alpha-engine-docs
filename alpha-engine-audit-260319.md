@@ -16,6 +16,17 @@ Once M1 and M2 are solid, M3 becomes the ongoing focus.
 
 | Item | Module | Fix |
 |------|--------|-----|
+| P0-1 / M1-1 | Research | S3 retry/backoff with exponential delay in `archive/manager.py` |
+| P0-2 / M1-2 | Research | signals.json write protected by `_retry_s3()` |
+| P0-3 / M1-3 | Executor | IB Gateway `ensure_connected()` with reconnect backoff in `ibkr.py` |
+| P0-4 / M1-4 | Executor | `finally` block guarantees `ibkr.disconnect()` on all exit paths |
+| P0-5 / M1-5 | Executor | `current_price` None/zero guard before position sizing |
+| P0-6 / M1-6 | Predictor | Soft timeout checkpoints + partial prediction writes in Lambda |
+| P0-7 / M1-7 | Research | Early env var validation (ANTHROPIC_API_KEY, FMP, FRED) at Lambda cold-start |
+| P0-8 / M1-8 | Research | Price fetch has catastrophic gate (<10% success raises error) |
+| P0-9 / M1-9 | Research | All fetcher failures logged as warnings (not silent) |
+| M1-11 | Research | `load_thesis_json` returns None gracefully on parse failure |
+| M1-14 | Research | deploy.sh handles ACCOUNT_ID extraction failure |
 | P0-10 | Executor | EOD S3 signal/prediction load now returns warnings instead of silent `{}` |
 | P0-11 | Executor | ATR stop fallback — 10% fixed stop when price history insufficient |
 | D-1 through D-16 | Dashboard | All 14 dashboard audit gaps addressed (S3 error tracking, health escalation, backtester/executor failure detection, veto display, position P&L, sector rotation, model drift, drawdown recovery, schema hardening) |
@@ -34,34 +45,22 @@ These items can cause the system to stop running, crash mid-execution, or produc
 
 ### CRITICAL
 
-| # | Module | Issue | File | Impact |
-|---|--------|-------|------|--------|
-| M1-1 | Research | No S3 retry/backoff — single transient error aborts entire pipeline | `archive/manager.py:45-68` | No signals.json → predictor + executor have no input |
-| M1-2 | Research | signals.json write has no error handling — S3 put failure → executor reads stale signals | `archive/manager.py:375-381` | Executor trades on yesterday's stale signals |
-| M1-3 | Executor | No IB Gateway reconnect — connection created once, no recovery on Gateway restart | `executor/main.py:244-250` | Mid-execution crash, lost orders, unrecorded positions |
-| M1-4 | Executor | ibkr.disconnect() missing in error paths — resource leak on repeated failures | `executor/main.py:202-215` | Zombie connections accumulate |
-| M1-5 | Executor | current_price can be None → TypeError in position sizer | `executor/position_sizer.py:89-102` | Order crashes if price fetch returns None |
-| M1-6 | Predictor | No Lambda timeout protection — 900s limit with no soft timeout or checkpoint | `inference/daily_predict.py` (main) | yfinance batch hangs → Lambda times out → no predictions |
-| M1-7 | Research | No config validation at startup — missing ANTHROPIC_API_KEY discovered mid-graph | `lambda/handler.py:106-130` | Entire Lambda run wasted before first LLM call fails |
+All 7 original critical items (M1-1 through M1-7) have been fixed. See "What's Been Closed" above.
 
-### HIGH
+### HIGH (4 remaining)
 
 | # | Module | Issue | File | Impact |
 |---|--------|-------|------|--------|
-| M1-8 | Research | Price fetch failure returns {} — scanner runs with no price data, returns 0 candidates | `data/fetchers/price_fetcher.py:75-85` | Graph continues with empty universe |
-| M1-9 | Research | All fetcher failures silent — news, analyst, macro, insider return empty on any error | Multiple fetchers | Agents receive no data, produce generic theses |
 | M1-10 | Predictor | GBM feature count not validated at inference — feature list mismatch crashes Lambda | `inference/daily_predict.py:1900-2010` | Full inference failure on config/model drift |
-| M1-11 | Research | JSON parse failure in load_thesis_json returns None silently | `archive/manager.py:291-293` | Thesis data lost without notification |
 | M1-12 | Research | Schema migration uses bare `except: pass` — masks real DDL errors | `archive/manager.py:252-254` | Database corruption goes unnoticed |
 | M1-13 | Research | No token limit enforcement before agent calls | `config.py:97-98` | Agent call exceeds token limit, fails mid-run |
-| M1-14 | Research | deploy.sh ACCOUNT_ID extraction can fail → invalid ECR repo | `infrastructure/deploy.sh:29-31` | Broken deployment |
 | M1-15 | Predictor | Stale price data not flagged in predictions output | `inference/daily_predict.py:600-800` | Predictions based on stale prices look fresh |
-| M1-16 | Predictor | Daily closes vs slim cache circular dependency — both fail → silent skip | `inference/daily_predict.py`, `training/train_handler.py` | Missing data with no error |
 
-### MEDIUM
+### MEDIUM (9 remaining)
 
 | # | Module | Issue | File | Impact |
 |---|--------|-------|------|--------|
+| M1-16 | Predictor | Daily closes vs slim cache — no staleness flag when both fail and yfinance fallback used | `inference/daily_predict.py` | Executor can't assess data freshness |
 | M1-17 | Research | flow-doctor init failure silently ignored | `lambda/handler.py:46` | No observability when flow-doctor breaks |
 | M1-18 | Research | .env parsing hand-rolled — quotes in values not handled | `infrastructure/deploy.sh:116-119` | Deployment failure on certain env vars |
 | M1-19 | Research | Dependencies not pinned — langgraph, yfinance, edgartools break on update | `requirements.txt` | Random breakage on next deploy |
@@ -69,10 +68,9 @@ These items can cause the system to stop running, crash mid-execution, or produc
 | M1-21 | Executor | Market hours gate at end — wastes CPU if pre-market | `executor/main.py:237-240` | Unnecessary resource usage |
 | M1-22 | Executor | Secrets in crontab (GMAIL_APP_PASSWORD inline) | `infrastructure/add-cron.sh:40-44` | Credential exposure in process list |
 | M1-23 | Executor | First-day NAV returns None — EOD email may not handle | `executor/eod_reconcile.py:223-229` | EOD email crash on first trading day |
-| M1-24 | Predictor | No per-ticker fetch timeout — single hang blocks entire batch | `inference/daily_predict.py:1700-1800` | Slow inference |
 | M1-25 | Backtester | Generic `except Exception` throughout — silent failures | Multiple files | Backtester errors go unnoticed |
 
-### Cross-Module
+### Cross-Module (3 remaining)
 
 | # | Issue | Impact |
 |---|-------|--------|
@@ -84,15 +82,13 @@ These items can cause the system to stop running, crash mid-execution, or produc
 
 | Fix | Effort | Items |
 |-----|--------|-------|
-| S3 retry/backoff (3 attempts, exponential) across all modules | 0.5 day | M1-1, M1-2 |
-| IB Gateway heartbeat + reconnect before each order block | 1 day | M1-3, M1-4 |
-| Config validation at Lambda cold-start (check all required env vars) | 0.5 day | M1-7 |
-| Predictor soft timeout (flush results at 13 min) + feature count validation | 0.5 day | M1-6, M1-10 |
-| Validate current_price is not None before position sizing | 0.5 hr | M1-5 |
+| Validate GBM feature count matches loaded model at inference | 0.5 hr | M1-10 |
+| Fix schema migration — catch only `OperationalError`, log others | 0.5 hr | M1-12 |
+| Add staleness flag to prediction output (data_age_days field) | 0.5 day | M1-15, M1-16 |
+| Pin dependency versions across all modules | 0.5 day | M1-19 |
 | Cross-module health status JSON on S3 | 2 days | M1-26 |
-| Pin dependency versions | 0.5 day | M1-19 |
 
-**Total M1 effort: ~6 days**
+**Total M1 remaining effort: ~4 days**
 
 ---
 
@@ -234,11 +230,11 @@ These are optimization opportunities to pursue once M1 and M2 are solid.
 
 | Milestone | Open Items | Estimated Effort |
 |-----------|-----------|-----------------|
-| M1 — Reliability | 28 items (7 critical, 9 high, 9 medium, 3 cross-module) | ~6 days |
+| M1 — Reliability | 16 items (0 critical, 4 high, 9 medium, 3 cross-module) | ~4 days |
 | M2 — Alpha Readiness | 28 items (3 critical, 7 high, 18 medium) | ~6 days |
 | M3 — Maximize Alpha | 21 opportunities | Ongoing |
 
-**Next action:** Start M1 critical items — S3 retry/backoff, IB Gateway reconnect, config validation, and predictor timeout protection.
+**Next action:** Close remaining M1 HIGH items (GBM feature validation, schema migration, staleness flags), then move to M2 critical trading logic issues.
 
 ---
 
