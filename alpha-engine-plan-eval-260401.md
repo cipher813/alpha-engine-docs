@@ -815,17 +815,17 @@ Total new DB growth: ~100K rows/year (~50MB). Negligible for SQLite.
 
 | Priority | Item | Baseline comparison | What it answers | Status |
 |----------|------|---------------------|-----------------|--------|
-| 2a | Scanner filter lift | Passing vs. full 900 | Does the quant filter select outperformers? | **Unblocked** — ready to implement once data accumulates |
-| 2b | Sector team lift (per team) | Team picks vs. own sector avg from 900 | Does each team beat its sector? | **Unblocked** — ready to implement once data accumulates |
-| 2c | Quant vs. qual+peer lift | Team picks vs. quant top-10 | Does LLM analysis add value over quant alone? | **Unblocked** — ready to implement once data accumulates |
-| 2d | CIO lift | ADVANCE vs. all 12-18 sector recs | Does CIO pick the best of what teams recommended? | **Unblocked** — ready to implement once data accumulates |
-| 2e | CIO vs. score-ranking baseline | CIO picks vs. top-N-by-score | Does LLM judgment beat mechanical ranking? | **Unblocked** — ready to implement once data accumulates |
-| 2f | Predictor lift | UP-predicted vs. all picks | Does the model separate within picked stocks? | **Unblocked** — ready to implement once data accumulates |
-| 2g | Execution lift | Traded returns vs. naive buy-and-hold of approved picks | Does execution add value? | **Unblocked** — ready to implement once data accumulates |
+| 2a | Scanner filter lift | Passing vs. full 900 | Does the quant filter select outperformers? | **DONE** (2026-04-02) — `_scanner_lift()` in `end_to_end.py`, passing avg vs universe avg |
+| 2b | Sector team lift (per team) | Team picks vs. own sector avg from 900 | Does each team beat its sector? | **DONE** (2026-04-02) — `_team_lift()` now compares picks against full sector avg from `universe_returns` (not just quant candidates) |
+| 2c | Quant vs. qual+peer lift | Team picks vs. quant top-10 | Does LLM analysis add value over quant alone? | **DONE** (2026-04-02) — `_team_lift()` also computes `lift_vs_quant` (picks vs quant candidates avg) per team |
+| 2d | CIO lift | ADVANCE vs. all 12-18 sector recs | Does CIO pick the best of what teams recommended? | **DONE** (2026-04-02) — `_cio_lift()` with ADVANCE/REJECT avg split |
+| 2e | CIO vs. score-ranking baseline | CIO picks vs. top-N-by-score | Does LLM judgment beat mechanical ranking? | **DONE** (2026-04-02) — `_cio_vs_ranking_lift()` compares CIO picks vs counterfactual top-N by final_score per date, with overlap tracking |
+| 2f | Predictor lift | UP-predicted vs. all picks | Does the model separate within picked stocks? | **DONE** (2026-04-02) — `_predictor_lift()` with UP/DOWN/ALL split |
+| 2g | Execution lift | Traded returns vs. naive buy-and-hold of approved picks | Does execution add value? | **DONE** (2026-04-02) — `_executor_lift()` using shadow book for approved baseline |
 
 **Key insight:** 2b and 2d are the highest-signal evaluations for research. If sector teams can't beat their sector average, the LLM analysis isn't working. If the CIO can't beat score-ranking, replace it with a rule.
 
-**Status:** All items unblocked now that `universe_returns` (1a) and `end_to_end.py` (1g) are complete. Lift metrics are computed automatically by the backtester. Accuracy improves as data accumulates (need 4+ weeks of universe_returns data for meaningful lift analysis).
+**Status:** All 7 items implemented in `end_to_end.py`. Lift metrics are computed automatically by the backtester on each weekly run. Results will become statistically meaningful after 4+ weeks of `universe_returns` data accumulation.
 
 ### Phase 3: Component-level diagnostics
 
@@ -866,7 +866,7 @@ Total new DB growth: ~100K rows/year (~50MB). Negligible for SQLite.
 
 ## 8. Progress Summary (updated 2026-04-02)
 
-### Completed (14 items)
+### Completed (21 items)
 | Item | Module | Date | Notes |
 |------|--------|------|-------|
 | 1a | Backtester | 2026-04-02 | `universe_returns` table + `analysis/universe_returns.py` — uses polygon.io `get_grouped_daily()` for all ~900 tickers, computes 5d/10d forward returns, SPY/sector ETF benchmarks |
@@ -883,11 +883,19 @@ Total new DB growth: ~100K rows/year (~50MB). Negligible for SQLite.
 | 3e | Backtester | 2026-04-02 | `analysis/veto_value.py` — dollar losses avoided vs alpha foregone per DOWN prediction, by-confidence breakdown, net veto value. Uses shadow book for position sizing. Wired into reporter + backtest.py |
 | 3f | Backtester | 2026-04-02 | `analysis/macro_eval.py` — A/B comparison of accuracy/alpha with vs without macro shift using cio_evaluations + universe_returns, macro impact on BUY status changes, shift statistics. Wired into reporter + backtest.py |
 | 3g | Backtester | 2026-04-02 | `analysis/alpha_distribution.py` — alpha bucketed into 6 ranges across 5d/10d/30d horizons, score calibration curve with monotonicity check. Wired into reporter + backtest.py |
+| 2a | Backtester | 2026-04-02 | Scanner filter lift — `_scanner_lift()` in `end_to_end.py`, passing avg vs universe avg |
+| 2b | Backtester | 2026-04-02 | Sector team lift — `_team_lift()` compares picks against full sector avg from universe_returns |
+| 2c | Backtester | 2026-04-02 | Quant vs qual+peer lift — `_team_lift()` computes `lift_vs_quant` per team |
+| 2d | Backtester | 2026-04-02 | CIO lift — `_cio_lift()` with ADVANCE/REJECT avg split |
+| 2e | Backtester | 2026-04-02 | CIO vs score-ranking baseline — `_cio_vs_ranking_lift()`, counterfactual top-N by score with overlap tracking |
+| 2f | Backtester | 2026-04-02 | Predictor lift — `_predictor_lift()` with UP/DOWN/ALL split |
+| 2g | Backtester | 2026-04-02 | Execution lift — `_executor_lift()` using shadow book for approved baseline |
 
-### Phases 1 + 3 complete — next steps
-**Phases 1 and 3 are fully implemented.** The data foundation and component-level diagnostics are in place. Next priorities:
+### Phases 1 + 2 + 3 complete — next steps
+**Phases 1, 2, and 3 are fully implemented.** The data foundation, lift metrics at every decision boundary, and component-level diagnostics are all in place. All metrics are computed automatically on each weekly backtester run.
 
-1. **Data accumulation** — universe_returns needs 4+ weeks of data before lift metrics and macro evaluation are statistically meaningful. The backtester will populate this automatically on each weekly run.
-2. **Phase 2 lift metrics** — all unblocked. The `end_to_end.py` module already computes lift at every boundary. Individual metric modules (2a-2g) will produce meaningful results as data accumulates.
-3. **Phase 4: Self-adjustment mechanisms** — blocked on Phase 2 data accumulation. Auto-relax scanner filter (4a), sector team slot allocation (4b), CIO deterministic fallback (4c), and predictor-informed sizing (4d) all require 8+ weeks of lift data.
-4. **Phase 5: System maturity** — alpha decomposition (5a), realistic slippage model (5b), canary deployment (5c) require substantial live trading data.
+Next priorities:
+
+1. **Data accumulation** — universe_returns needs 4+ weeks of data before lift metrics, macro evaluation, and team scorecards are statistically meaningful. The backtester will populate this automatically on each weekly run.
+2. **Phase 4: Self-adjustment mechanisms** — blocked on data accumulation. Auto-relax scanner filter (4a), sector team slot allocation (4b), CIO deterministic fallback (4c), and predictor-informed sizing (4d) all require 8+ weeks of lift data to make confident adjustments.
+3. **Phase 5: System maturity** — alpha decomposition (5a), realistic slippage model (5b), canary deployment (5c) require substantial live trading data.
