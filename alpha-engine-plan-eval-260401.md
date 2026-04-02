@@ -843,12 +843,12 @@ Total new DB growth: ~100K rows/year (~50MB). Negligible for SQLite.
 
 | Priority | Item | Module | Effort | What it answers | Status |
 |----------|------|--------|--------|-----------------|--------|
-| 4a | Auto-relax scanner filter if leakage is high | Research | Medium | Adaptive quant filter thresholds | **Not started** — blocked on 2a |
-| 4b | Sector team slot allocation based on rolling lift | Research | Medium | More picks from better teams | **Not started** — blocked on 2b |
-| 4c | CIO → deterministic fallback if lift is zero | Research | Medium | Simplify when LLM doesn't help | **Not started** — blocked on 2d |
-| 4d | Predictor p_up → position sizing if IC positive | Predictor | Medium | Use predictions beyond veto | **Not started** |
-| 4e | Disable underperforming triggers | Executor | Low | Simplify execution | **Not started** — blocked on 3a |
-| 4f | Position sizing A/B vs. equal-weight | Executor | Medium | Does sizing earn its complexity? | **Not started** |
+| 4a | Auto-relax scanner filter if leakage is high | Research | Medium | Adaptive quant filter thresholds | **DONE** (2026-04-02) — `optimizer/scanner_optimizer.py` in backtester: analyzes filter leakage from scanner_evaluations + universe_returns, writes relaxed thresholds to `config/scanner_params.json`. Research `config.py` reads via `get_scanner_params()`, scanner uses dynamic thresholds. Min-data gate: 8 weeks. |
+| 4b | Sector team slot allocation based on rolling lift | Research | Medium | More picks from better teams | **DONE** (2026-04-02) — `optimizer/pipeline_optimizer.py` in backtester: analyzes team lift from end_to_end, recommends slot changes, writes to `config/team_slots.json`. Min-data gate: 8 weeks. |
+| 4c | CIO → deterministic fallback if lift is zero | Research | Medium | Simplify when LLM doesn't help | **DONE** (2026-04-02) — `optimizer/pipeline_optimizer.py` in backtester: compares CIO lift vs score-ranking baseline, writes `cio_mode` to `config/research_params.json` if underperforming. Min-data gate: 8 weeks. |
+| 4d | Predictor p_up → position sizing if IC positive | Predictor | Medium | Use predictions beyond veto | **DONE** (2026-04-02) — `optimizer/predictor_sizing_optimizer.py` in backtester: computes rank IC, writes `use_p_up_sizing` to executor_params.json. Executor `position_sizer.py` blends p_up into sizing. Min-data gate: 30 predictions. |
+| 4e | Disable underperforming triggers | Executor | Low | Simplify execution | **DONE** (2026-04-02) — `optimizer/trigger_optimizer.py` in backtester: analyzes trigger scorecard, writes `disabled_triggers` list to executor_params.json. Executor `entry_triggers.py` skips disabled triggers. Min-data gate: 50 trades per trigger. |
+| 4f | Position sizing A/B vs. equal-weight | Executor | Medium | Does sizing earn its complexity? | **DONE** (2026-04-02) — `analysis/sizing_ab.py` in backtester: runs twin VectorBT simulation (current sizing vs equal-weight), compares Sharpe/alpha. Report-only, no config write. Min-data gate: 50 trades. |
 
 ### Phase 5: System maturity
 
@@ -866,7 +866,7 @@ Total new DB growth: ~100K rows/year (~50MB). Negligible for SQLite.
 
 ## 8. Progress Summary (updated 2026-04-02)
 
-### Completed (21 items)
+### Completed (29 items)
 | Item | Module | Date | Notes |
 |------|--------|------|-------|
 | 1a | Backtester | 2026-04-02 | `universe_returns` table + `analysis/universe_returns.py` — uses polygon.io `get_grouped_daily()` for all ~900 tickers, computes 5d/10d forward returns, SPY/sector ETF benchmarks |
@@ -876,13 +876,6 @@ Total new DB growth: ~100K rows/year (~50MB). Negligible for SQLite.
 | 1e | Backtester | 2026-04-02 | `beat_spy_5d` column + `_ensure_5d_columns()` migration + 5d backfill loop. All analysis modules (signal_quality, regime, score, reporter) updated for 3-horizon (5d/10d/30d) output |
 | 1f | Executor | 2026-04-01 | `executor_shadow_book` — risk guard blocks logged with enriched context |
 | 1g | Backtester | 2026-04-02 | `analysis/end_to_end.py` — computes lift at all 5 decision boundaries (scanner, team, CIO, predictor, executor). Attribution table builder for CSV export. Wired into weekly report |
-| 3a | Backtester | 2026-04-02 | `analysis/trigger_scorecard.py` — per-trigger slippage vs signal/open, realized alpha, win rate. Categorizes pullback/VWAP/support/time_expiry. Wired into reporter + backtest.py |
-| 3b | Backtester | 2026-04-02 | `analysis/shadow_book.py` — compares blocked vs traded forward returns via universe_returns join, breakdown by block reason, guard tightness assessment. Wired into reporter + backtest.py |
-| 3c | Backtester | 2026-04-02 | `analysis/exit_timing.py` — MFE/MAE per roundtrip trade via yfinance, capture ratio (realized/MFE), by-exit-type breakdown, diagnosis (too_early/well_timed/could_improve). Wired into reporter + backtest.py |
-| 3d | Predictor | Pre-plan | Platt calibrator + isotonic regression with ECE, integrated into inference |
-| 3e | Backtester | 2026-04-02 | `analysis/veto_value.py` — dollar losses avoided vs alpha foregone per DOWN prediction, by-confidence breakdown, net veto value. Uses shadow book for position sizing. Wired into reporter + backtest.py |
-| 3f | Backtester | 2026-04-02 | `analysis/macro_eval.py` — A/B comparison of accuracy/alpha with vs without macro shift using cio_evaluations + universe_returns, macro impact on BUY status changes, shift statistics. Wired into reporter + backtest.py |
-| 3g | Backtester | 2026-04-02 | `analysis/alpha_distribution.py` — alpha bucketed into 6 ranges across 5d/10d/30d horizons, score calibration curve with monotonicity check. Wired into reporter + backtest.py |
 | 2a | Backtester | 2026-04-02 | Scanner filter lift — `_scanner_lift()` in `end_to_end.py`, passing avg vs universe avg |
 | 2b | Backtester | 2026-04-02 | Sector team lift — `_team_lift()` compares picks against full sector avg from universe_returns |
 | 2c | Backtester | 2026-04-02 | Quant vs qual+peer lift — `_team_lift()` computes `lift_vs_quant` per team |
@@ -890,12 +883,28 @@ Total new DB growth: ~100K rows/year (~50MB). Negligible for SQLite.
 | 2e | Backtester | 2026-04-02 | CIO vs score-ranking baseline — `_cio_vs_ranking_lift()`, counterfactual top-N by score with overlap tracking |
 | 2f | Backtester | 2026-04-02 | Predictor lift — `_predictor_lift()` with UP/DOWN/ALL split |
 | 2g | Backtester | 2026-04-02 | Execution lift — `_executor_lift()` using shadow book for approved baseline |
+| 3a | Backtester | 2026-04-02 | `analysis/trigger_scorecard.py` — per-trigger slippage vs signal/open, realized alpha, win rate. Categorizes pullback/VWAP/support/time_expiry. Wired into reporter + backtest.py |
+| 3b | Backtester | 2026-04-02 | `analysis/shadow_book.py` — compares blocked vs traded forward returns via universe_returns join, breakdown by block reason, guard tightness assessment. Wired into reporter + backtest.py |
+| 3c | Backtester | 2026-04-02 | `analysis/exit_timing.py` — MFE/MAE per roundtrip trade via yfinance, capture ratio (realized/MFE), by-exit-type breakdown, diagnosis (too_early/well_timed/could_improve). Wired into reporter + backtest.py |
+| 3d | Predictor | Pre-plan | Platt calibrator + isotonic regression with ECE, integrated into inference |
+| 3e | Backtester | 2026-04-02 | `analysis/veto_value.py` — dollar losses avoided vs alpha foregone per DOWN prediction, by-confidence breakdown, net veto value. Uses shadow book for position sizing. Wired into reporter + backtest.py |
+| 3f | Backtester | 2026-04-02 | `analysis/macro_eval.py` — A/B comparison of accuracy/alpha with vs without macro shift using cio_evaluations + universe_returns, macro impact on BUY status changes, shift statistics. Wired into reporter + backtest.py |
+| 3g | Backtester | 2026-04-02 | `analysis/alpha_distribution.py` — alpha bucketed into 6 ranges across 5d/10d/30d horizons, score calibration curve with monotonicity check. Wired into reporter + backtest.py |
+| 4a | Backtester + Research | 2026-04-02 | `optimizer/scanner_optimizer.py` — analyzes filter leakage from scanner_evaluations + universe_returns, writes to `config/scanner_params.json`. Research `config.py` adds `get_scanner_params()`, scanner uses S3-configurable thresholds. Min-data gate: 8 weeks |
+| 4b | Backtester | 2026-04-02 | `optimizer/pipeline_optimizer.py` — analyzes team lift, recommends slot changes, writes to `config/team_slots.json`. Min-data gate: 8 weeks |
+| 4c | Backtester | 2026-04-02 | `optimizer/pipeline_optimizer.py` — compares CIO lift vs score-ranking baseline, writes `cio_mode` flag to `config/research_params.json`. Min-data gate: 8 weeks |
+| 4d | Backtester + Executor | 2026-04-02 | `optimizer/predictor_sizing_optimizer.py` — computes rank IC, writes `use_p_up_sizing` to executor_params.json. Executor `position_sizer.py` blends p_up into sizing when enabled. Min-data gate: 30 predictions |
+| 4e | Backtester + Executor | 2026-04-02 | `optimizer/trigger_optimizer.py` — analyzes trigger scorecard, writes `disabled_triggers` to executor_params.json. Executor `entry_triggers.py` skips disabled triggers. Min-data gate: 50 trades per trigger |
+| 4f | Backtester | 2026-04-02 | `analysis/sizing_ab.py` — twin VectorBT simulation (current sizing vs equal-weight), compares Sharpe/alpha. Report-only. Min-data gate: 50 trades |
+| — | Dashboard | 2026-04-02 | `pages/9_Data_Inventory.py` expanded with 5 new eval tables + 6 Phase 4 optimizer maturity rows with progress bars |
+| — | Dashboard | 2026-04-02 | `pages/10_Evaluation.py` — new page with lift waterfall chart, Phase 3 component diagnostic tabs, Phase 4 self-adjustment status panel with live S3 config display |
 
-### Phases 1 + 2 + 3 complete — next steps
-**Phases 1, 2, and 3 are fully implemented.** The data foundation, lift metrics at every decision boundary, and component-level diagnostics are all in place. All metrics are computed automatically on each weekly backtester run.
+### Phases 1–4 complete — next steps
+**Phases 1, 2, 3, and 4 are fully implemented.** The data foundation, lift metrics, component diagnostics, and self-adjustment mechanisms are all in place. All Phase 4 optimizers have min-data gates that keep them dormant until sufficient data accumulates — they will activate automatically.
+
+**Dashboard tracking:** The Data Inventory page now shows progress bars for all Phase 4 optimizers (scanner auto-relax: 8 weeks, team slots: 8 weeks, CIO fallback: 8 weeks, p_up sizing: 30 predictions, trigger optimizer: 200 trades, sizing A/B: 50 trades). The new Evaluation page visualizes lift metrics, component diagnostics, and current self-adjustment state.
 
 Next priorities:
 
-1. **Data accumulation** — universe_returns needs 4+ weeks of data before lift metrics, macro evaluation, and team scorecards are statistically meaningful. The backtester will populate this automatically on each weekly run.
-2. **Phase 4: Self-adjustment mechanisms** — blocked on data accumulation. Auto-relax scanner filter (4a), sector team slot allocation (4b), CIO deterministic fallback (4c), and predictor-informed sizing (4d) all require 8+ weeks of lift data to make confident adjustments.
-3. **Phase 5: System maturity** — alpha decomposition (5a), realistic slippage model (5b), canary deployment (5c) require substantial live trading data.
+1. **Data accumulation** — All Phase 4 mechanisms are built but dormant. They activate automatically once min-data gates are met. Monitor via Dashboard Data Inventory page.
+2. **Phase 5: System maturity** — alpha decomposition (5a), realistic slippage model (5b), canary deployment (5c), cross-module feedback (5d), signal decay analysis (5e). All require 8+ weeks of live trading data.
