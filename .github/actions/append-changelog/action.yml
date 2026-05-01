@@ -1,5 +1,5 @@
 name: 'Append to system-wide deploy changelog'
-description: 'Writes a deploy-event JSON to s3://alpha-engine-research/changelog/ for cross-repo deploy provenance.'
+description: 'Writes a deploy-event JSON to s3://alpha-engine-research/changelog/ for cross-repo deploy + event provenance, including PR body for downstream event mining.'
 
 # Per the system-wide-changelog preference (memory: preference_alpha_engine_deploy_changelog.md):
 # every successful deploy across any alpha-engine* repo emits one JSON object to S3.
@@ -7,11 +7,21 @@ description: 'Writes a deploy-event JSON to s3://alpha-engine-research/changelog
 # them into a Markdown view. Race-free because each entry has a unique
 # timestamped S3 key.
 #
+# As of the event-mining enrichment (2026-05-01): action ALSO fetches the PR
+# body via the GitHub API and embeds it in the entry. PR bodies carry the
+# actual problem statement + solution rationale — the data Brian needs to
+# answer "what problems did we face and how did we solve them" months later.
+#
+# The schema also adopts an `event_type` discriminator (deploy | incident |
+# manual | recovery) to coexist with future incident-source entries written
+# by SNS subscribers, flow-doctor, and the manual CLI. This action emits
+# only `deploy` events; the other types come from sibling tooling.
+#
 # Caller pattern:
 #   - uses: cipher813/alpha-engine-docs/.github/actions/append-changelog@main
 #     with:
 #       deploy_status: success     # or failure / merged
-#     # implicit context (repo, sha, ref, pr_number) comes from github.* env
+#     # implicit context (repo, sha, ref, pr_number, pr_body) comes from github.* env
 
 inputs:
   deploy_status:
@@ -26,6 +36,10 @@ inputs:
     description: 'PR title. Optional — auto-derived from first line of commit message when push event.'
     required: false
     default: ''
+  pr_body:
+    description: 'Full PR body. Optional — auto-fetched via gh api when pr_number is known.'
+    required: false
+    default: ''
   deploy_workflow:
     description: 'Name of the workflow that triggered this entry (e.g. deploy.yml, deploy-infrastructure.yml).'
     required: false
@@ -35,9 +49,9 @@ inputs:
     required: false
     default: 'alpha-engine-research'
   s3_prefix:
-    description: 'Override S3 key prefix. Default: changelog.'
+    description: 'Override S3 key prefix. Default: changelog/deploys (event-typed sub-prefix; sibling: changelog/incidents/, changelog/manual/).'
     required: false
-    default: 'changelog'
+    default: 'changelog/deploys'
 
 runs:
   using: 'composite'
@@ -52,12 +66,17 @@ runs:
         EVENT_NAME: ${{ github.event_name }}
         PR_NUMBER_INPUT: ${{ inputs.pr_number }}
         PR_TITLE_INPUT: ${{ inputs.pr_title }}
+        PR_BODY_INPUT: ${{ inputs.pr_body }}
         DEPLOY_STATUS: ${{ inputs.deploy_status }}
         DEPLOY_WORKFLOW: ${{ inputs.deploy_workflow }}
         S3_BUCKET: ${{ inputs.s3_bucket }}
         S3_PREFIX: ${{ inputs.s3_prefix }}
         WORKFLOW_RUN_ID: ${{ github.run_id }}
         WORKFLOW_NAME: ${{ github.workflow }}
+        # GH_TOKEN: GitHub auto-provides this for `gh api` calls; the default
+        # GITHUB_TOKEN's contents:read scope is sufficient for /pulls/{n} on
+        # the same repo. No secret to wire.
+        GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
 
@@ -87,20 +106,33 @@ runs:
           PR_TITLE="${PR_TITLE_INPUT}"
         fi
 
+        # PR body — the actual problem-statement + solution-rationale text
+        # we need for retro / event mining. Fetch via gh api when number is
+        # known and not explicitly passed. Best-effort: failures fall back
+        # to empty string rather than blocking the deploy log.
+        PR_BODY="${PR_BODY_INPUT}"
+        if [[ -z "${PR_BODY}" && -n "${PR_NUMBER:-}" ]]; then
+          PR_BODY=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' 2>/dev/null || echo "")
+        fi
+
         # Files-changed count (shallow checkout may not have parent — silent 0 in that case).
         FILES_CHANGED=$(git diff-tree --no-commit-id --name-only -r "${SHA}" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
 
         S3_KEY="${S3_PREFIX}/${TS_KEY}_${REPO_SHORT}_${SHA7}.json"
 
         # JSON build via jq (always available on GHA ubuntu-latest runners).
+        # Note: pr_body uses --arg so newlines + special chars round-trip
+        # cleanly; jq handles JSON escaping for us.
         ENTRY=$(jq -n \
           --arg ts_utc          "${TS_UTC}" \
+          --arg event_type      "deploy" \
           --arg repo            "${REPO}" \
           --arg branch          "${REF}" \
           --arg sha             "${SHA}" \
           --arg sha7            "${SHA7}" \
           --argjson pr_number   "${PR_NUMBER:-null}" \
           --arg pr_title        "${PR_TITLE}" \
+          --arg pr_body         "${PR_BODY}" \
           --arg pr_url          "$( [[ -n "${PR_NUMBER}" ]] && echo "https://github.com/${REPO}/pull/${PR_NUMBER}" || echo "" )" \
           --arg author          "${ACTOR}" \
           --argjson files_changed "${FILES_CHANGED}" \
@@ -111,12 +143,14 @@ runs:
           --arg workflow_run_id "${WORKFLOW_RUN_ID}" \
           '{
             ts_utc: $ts_utc,
+            event_type: $event_type,
             repo: $repo,
             branch: $branch,
             sha: $sha,
             sha7: $sha7,
             pr_number: $pr_number,
             pr_title: $pr_title,
+            pr_body: $pr_body,
             pr_url: $pr_url,
             author: $author,
             files_changed: $files_changed,
@@ -127,8 +161,8 @@ runs:
             workflow_run_id: $workflow_run_id
           }')
 
-        echo "Entry to write:"
-        echo "${ENTRY}" | jq .
+        echo "Entry to write (pr_body truncated for log):"
+        echo "${ENTRY}" | jq '.pr_body |= (if length > 200 then .[:200] + "…" else . end)'
         echo
         echo "S3 key: s3://${S3_BUCKET}/${S3_KEY}"
 
