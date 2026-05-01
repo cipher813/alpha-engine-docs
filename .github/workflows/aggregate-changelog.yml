@@ -50,17 +50,22 @@ jobs:
           mkdir -p /tmp/entries
 
           # Sync down ALL entry JSONs across event-type sub-prefixes:
-          # changelog/deploys/, changelog/incidents/, changelog/manual/.
-          # Each entry is at depth 4 inside the type-prefix
-          # (deploys/YYYY/MM/DDTHHMMSS_repo_sha7.json), so the include
-          # pattern matches that shape and skips the materialized
-          # CHANGELOG.md at the prefix root.
+          # changelog/{deploys,incidents,manual,recoveries}/. Each entry
+          # path has the shape `{type}/YYYY/MM/DDTHHMMSS_<...>.json` —
+          # three path segments after the type prefix, so three wildcards
+          # plus the `*.json` terminal segment match correctly. The
+          # earlier four-wildcard form silently matched zero entries
+          # because aws s3 sync's `*` does NOT cross `/` boundaries —
+          # it requires the same number of slashes as the actual key.
+          # The exclude "*" first + per-type include keeps the
+          # materialized CHANGELOG.md at the prefix root from being
+          # re-synced into the entries pool.
           aws s3 sync "s3://${BUCKET}/${PREFIX}" /tmp/entries \
             --exclude "*" \
-            --include "deploys/*/*/*/*.json" \
-            --include "incidents/*/*/*/*.json" \
-            --include "manual/*/*/*/*.json" \
-            --include "recoveries/*/*/*/*.json"
+            --include "deploys/*/*/*.json" \
+            --include "incidents/*/*/*.json" \
+            --include "manual/*/*/*.json" \
+            --include "recoveries/*/*/*.json"
 
           ENTRY_COUNT=$(find /tmp/entries -name '*.json' | wc -l | tr -d ' ')
           echo "Loaded ${ENTRY_COUNT} entries"
