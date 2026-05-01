@@ -212,6 +212,32 @@ def test_event_id_deterministic_across_transforms():
     assert out1["event_id"] == out2["event_id"]
 
 
+def test_deploy_event_id_uses_repo_short_segment():
+    """Deploy event_id middle segment matches composite action's scheme.
+
+    Regression: the first backfill run on 2026-05-01 used the actor for
+    the middle segment, which diverged from the composite action's
+    `{ts}_{repo_short}_{hash}` and produced duplicate entries (auto-emit
+    at one path, backfill at another with the same hash). HEAD-probe
+    idempotency depends on this matching exactly.
+    """
+    out = bf.transform_deploy(_legacy_deploy())
+    # Format: {ts_id}_{repo_short}_{hash}
+    parts = out["event_id"].split("_")
+    assert parts[0] == "2026-05-01T16-09-17"
+    assert parts[1] == "alpha-engine-data"
+    assert len(parts[2]) == 7
+
+
+def test_incident_event_id_uses_source_segment():
+    """Incident event_id middle segment matches SNS-mirror Lambda's scheme."""
+    out = bf.transform_incident(_legacy_incident())
+    parts = out["event_id"].split("_")
+    assert parts[0] == "2026-05-01T20-23-29"
+    assert parts[1] == "alpha-engine-alerts"
+    assert len(parts[2]) == 7
+
+
 def test_structured_key_format():
     out = bf.transform_deploy(_legacy_deploy())
     key = bf._structured_key(out)
