@@ -34,16 +34,31 @@ annotations, retro queries months later can't reconstruct what happened —
 the deploy log shows the fix PRs, but not the operator actions that
 unblocked the day. This script closes that gap.
 
-## `pull-changelog` — local CHANGELOG.md refresh
-
-(Future helper; for now use:)
+## `ae-changelog` — pull aggregated CHANGELOG.md as a versioned snapshot
 
 ```bash
-aws s3 cp s3://alpha-engine-research/changelog/CHANGELOG.md \
-  $HOME/Development/alpha-engine-docs/private/CHANGELOG.md
+ae-changelog              # pull latest, save to private/CHANGELOG_<ver>.md
+ae-changelog --force      # re-download even if a snapshot for this version exists
+ae-changelog --latest     # also write/update private/CHANGELOG.md (always-latest pointer)
 ```
 
-The aggregator cron runs at 06:00 UTC daily. To force a refresh sooner:
+Each pull is a discrete snapshot named with the S3 object's
+`Last-Modified` timestamp (the aggregator's last-run time). Multiple
+pulls of the same aggregator-version are idempotent — same filename,
+no re-download unless `--force`.
+
+**Setup** — add to `~/.zshrc`:
+
+```bash
+alias ae-changelog="$HOME/Development/alpha-engine-docs/scripts/ae-changelog.sh"
+```
+
+**Auth** — uses active AWS CLI creds. Needs `s3:GetObject` on
+`arn:aws:s3:::alpha-engine-research/changelog/CHANGELOG.md`. Personal
+IAM user already has it.
+
+**Aggregator cadence** — runs daily at 06:00 UTC. To force a refresh
+between scheduled runs:
 
 ```bash
 gh workflow run aggregate-changelog.yml -R cipher813/alpha-engine-docs
