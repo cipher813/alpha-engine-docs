@@ -1,0 +1,55 @@
+name: Aggregate changelog — monthly rollup
+
+# Monthly cron — produces a rollup of the prior calendar month from the
+# structured corpus at s3://alpha-engine-research/changelog/entries/ and
+# writes it to s3://alpha-engine-research/changelog/aggregates/monthly/
+# {YYYY-MM}.{json,md}.
+#
+# PR 5 of the schema-discipline arc (ROADMAP > Observability >
+# "System-wide changelog: schema discipline + artifact linking +
+# aggregation layer", sub-item 4). Daily Markdown summary lives in
+# aggregate-changelog.yml; weekly in aggregate-changelog-weekly.yml.
+
+on:
+  schedule:
+    # 1st of month, 08:00 UTC — runs after the daily + weekly aggregators
+    # finish for the day so all of last month's entries are in the corpus
+    # + any cross-period inputs are settled.
+    - cron: '0 8 1 * *'
+  workflow_dispatch:
+    inputs:
+      reference_date:
+        description: 'ISO date (YYYY-MM-DD) to anchor the rollup. Default: today UTC.'
+        required: false
+        default: ''
+
+concurrency:
+  group: aggregate-changelog-monthly
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  rollup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::711398986525:role/github-actions-lambda-deploy
+          aws-region: us-east-1
+
+      - name: Generate monthly rollup
+        run: |
+          set -euo pipefail
+          REF_ARG=""
+          if [[ -n "${{ inputs.reference_date }}" ]]; then
+            REF_ARG="--reference-date ${{ inputs.reference_date }}"
+          fi
+          python3 scripts/aggregate_periodic.py --period monthly $REF_ARG
