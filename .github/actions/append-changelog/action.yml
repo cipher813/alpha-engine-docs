@@ -1,0 +1,135 @@
+name: 'Append to system-wide deploy changelog'
+description: 'Writes a deploy-event JSON to s3://alpha-engine-research/changelog/ for cross-repo deploy provenance.'
+
+# Per the system-wide-changelog preference (memory: preference_alpha_engine_deploy_changelog.md):
+# every successful deploy across any alpha-engine* repo emits one JSON object to S3.
+# A daily aggregator cron (aggregate-changelog.yml in this repo) materializes
+# them into a Markdown view. Race-free because each entry has a unique
+# timestamped S3 key.
+#
+# Caller pattern:
+#   - uses: cipher813/alpha-engine-docs/.github/actions/append-changelog@main
+#     with:
+#       deploy_status: success     # or failure / merged
+#     # implicit context (repo, sha, ref, pr_number) comes from github.* env
+
+inputs:
+  deploy_status:
+    description: 'success | failure | merged. Use "merged" for repos where a push-to-main IS the deploy (no separate build/deploy step).'
+    required: true
+    default: 'success'
+  pr_number:
+    description: 'PR number that landed this deploy. Optional — auto-derived from commit message when push event.'
+    required: false
+    default: ''
+  pr_title:
+    description: 'PR title. Optional — auto-derived from first line of commit message when push event.'
+    required: false
+    default: ''
+  deploy_workflow:
+    description: 'Name of the workflow that triggered this entry (e.g. deploy.yml, deploy-infrastructure.yml).'
+    required: false
+    default: ''
+  s3_bucket:
+    description: 'Override S3 bucket. Default: alpha-engine-research.'
+    required: false
+    default: 'alpha-engine-research'
+  s3_prefix:
+    description: 'Override S3 key prefix. Default: changelog.'
+    required: false
+    default: 'changelog'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Build entry + put to S3
+      shell: bash
+      env:
+        REPO: ${{ github.repository }}
+        SHA: ${{ github.sha }}
+        REF: ${{ github.ref_name }}
+        ACTOR: ${{ github.actor }}
+        EVENT_NAME: ${{ github.event_name }}
+        PR_NUMBER_INPUT: ${{ inputs.pr_number }}
+        PR_TITLE_INPUT: ${{ inputs.pr_title }}
+        DEPLOY_STATUS: ${{ inputs.deploy_status }}
+        DEPLOY_WORKFLOW: ${{ inputs.deploy_workflow }}
+        S3_BUCKET: ${{ inputs.s3_bucket }}
+        S3_PREFIX: ${{ inputs.s3_prefix }}
+        WORKFLOW_RUN_ID: ${{ github.run_id }}
+        WORKFLOW_NAME: ${{ github.workflow }}
+      run: |
+        set -euo pipefail
+
+        TS_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        TS_KEY=$(date -u +%Y/%m/%dT%H-%M-%S)
+        REPO_SHORT="${REPO#*/}"
+        SHA7="${SHA:0:7}"
+
+        # Derive PR number / title from the merge-commit message when not
+        # passed explicitly. Squash + merge-commit + rebase strategies all
+        # tend to produce "<title> (#<number>)" in the first line — match that.
+        if [[ -z "${PR_NUMBER_INPUT}" || -z "${PR_TITLE_INPUT}" ]]; then
+          MSG=$(git log -1 --pretty=%s "${SHA}" 2>/dev/null || echo "")
+        else
+          MSG=""
+        fi
+
+        if [[ -z "${PR_NUMBER_INPUT}" ]]; then
+          PR_NUMBER=$(echo "${MSG}" | grep -oE '#[0-9]+' | head -1 | tr -d '#' || true)
+        else
+          PR_NUMBER="${PR_NUMBER_INPUT}"
+        fi
+
+        if [[ -z "${PR_TITLE_INPUT}" ]]; then
+          PR_TITLE=$(echo "${MSG}" | sed 's/ *(#[0-9]*) *$//')
+        else
+          PR_TITLE="${PR_TITLE_INPUT}"
+        fi
+
+        # Files-changed count (shallow checkout may not have parent — silent 0 in that case).
+        FILES_CHANGED=$(git diff-tree --no-commit-id --name-only -r "${SHA}" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
+
+        S3_KEY="${S3_PREFIX}/${TS_KEY}_${REPO_SHORT}_${SHA7}.json"
+
+        # JSON build via jq (always available on GHA ubuntu-latest runners).
+        ENTRY=$(jq -n \
+          --arg ts_utc          "${TS_UTC}" \
+          --arg repo            "${REPO}" \
+          --arg branch          "${REF}" \
+          --arg sha             "${SHA}" \
+          --arg sha7            "${SHA7}" \
+          --argjson pr_number   "${PR_NUMBER:-null}" \
+          --arg pr_title        "${PR_TITLE}" \
+          --arg pr_url          "$( [[ -n "${PR_NUMBER}" ]] && echo "https://github.com/${REPO}/pull/${PR_NUMBER}" || echo "" )" \
+          --arg author          "${ACTOR}" \
+          --argjson files_changed "${FILES_CHANGED}" \
+          --arg deploy_workflow "${DEPLOY_WORKFLOW}" \
+          --arg deploy_status   "${DEPLOY_STATUS}" \
+          --arg event_name      "${EVENT_NAME}" \
+          --arg workflow_name   "${WORKFLOW_NAME}" \
+          --arg workflow_run_id "${WORKFLOW_RUN_ID}" \
+          '{
+            ts_utc: $ts_utc,
+            repo: $repo,
+            branch: $branch,
+            sha: $sha,
+            sha7: $sha7,
+            pr_number: $pr_number,
+            pr_title: $pr_title,
+            pr_url: $pr_url,
+            author: $author,
+            files_changed: $files_changed,
+            deploy_workflow: $deploy_workflow,
+            deploy_status: $deploy_status,
+            event_name: $event_name,
+            workflow_name: $workflow_name,
+            workflow_run_id: $workflow_run_id
+          }')
+
+        echo "Entry to write:"
+        echo "${ENTRY}" | jq .
+        echo
+        echo "S3 key: s3://${S3_BUCKET}/${S3_KEY}"
+
+        echo "${ENTRY}" | aws s3 cp - "s3://${S3_BUCKET}/${S3_KEY}" --content-type application/json
