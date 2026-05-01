@@ -71,6 +71,42 @@ arc; this is PR 1 (writer + vocab).
 (17 cases covering vocab loading, validation rules, S3 key derivation, the
 legacy-shim error path, and an end-to-end --dry-run).
 
+## `backfill_changelog.py` — one-shot migration of legacy entries
+
+Converts every entry under the legacy event-typed prefixes
+(`changelog/{deploys,incidents,manual,recoveries}/...`) to the
+schema-1.0.0 structured corpus at
+`changelog/entries/{YYYY-MM-DD}/{event_id}.json`. PR 3 of the
+schema-discipline arc — operator runs once after the auto-emit PRs
+land; PR 4 then flips the daily aggregator to read `entries/`
+exclusively.
+
+```bash
+# Sample-test with 5 entries per prefix, no S3 writes
+python3 scripts/backfill_changelog.py --dry-run --limit 5 --verbose
+
+# Full backfill across all legacy prefixes (idempotent — HEAD probe skips
+# entries already in structured form)
+python3 scripts/backfill_changelog.py
+
+# Re-process a single prefix only
+python3 scripts/backfill_changelog.py --prefix incidents
+
+# Force overwrite (rare — use only if you've changed the transform logic
+# and want to re-run against an already-backfilled corpus)
+python3 scripts/backfill_changelog.py --reprocess
+```
+
+Backfilled entries carry `backfilled: true` so future aggregation can
+flag them as reconstructed-from-legacy + needing operator review for
+the controlled-vocab fields that defaulted (subsystem,
+`root_cause_category`, etc.). No external Python deps; runs against
+the `aws` CLI via subprocess.
+
+**Tests** — `python3 scripts/test_backfill_changelog.py` runs the
+12-case transform suite (deploy → change/incident, incident, manual
+→ change, recovery, subsystem inference, deterministic event_id).
+
 ## `ae-changelog` — pull aggregated CHANGELOG.md as a versioned snapshot
 
 ```bash
