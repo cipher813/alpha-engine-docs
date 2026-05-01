@@ -12,10 +12,16 @@ description: 'Writes a deploy-event JSON to s3://alpha-engine-research/changelog
 # actual problem statement + solution rationale — the data Brian needs to
 # answer "what problems did we face and how did we solve them" months later.
 #
-# The schema also adopts an `event_type` discriminator (deploy | incident |
-# manual | recovery) to coexist with future incident-source entries written
-# by SNS subscribers, flow-doctor, and the manual CLI. This action emits
-# only `deploy` events; the other types come from sibling tooling.
+# As of the schema-discipline arc PR 2 (2026-05-01 evening): action
+# DUAL-WRITES the entry. The structured-corpus path
+# (changelog/entries/{YYYY-MM-DD}/{event_id}.json) carries the new schema
+# (event_type=change, subsystem inferred from repo, resolution_type,
+# detected_at/resolved_at/verified_at timestamps, git_refs, auto_emitted=true)
+# and is the source-of-truth going forward. The legacy path
+# (changelog/deploys/...) keeps emitting per the CLAUDE.md S3 contract
+# ("write to BOTH old and new paths for at least 1 week before removing
+# the old path"). Aggregator switches to entries/-only in PR 4 of the arc;
+# legacy emits stop in PR 5.
 #
 # Caller pattern:
 #   - uses: cipher813/alpha-engine-docs/.github/actions/append-changelog@main
@@ -49,9 +55,21 @@ inputs:
     required: false
     default: 'alpha-engine-research'
   s3_prefix:
-    description: 'Override S3 key prefix. Default: changelog/deploys (event-typed sub-prefix; sibling: changelog/incidents/, changelog/manual/).'
+    description: 'Override S3 key prefix for the LEGACY entry. Default: changelog/deploys. The structured entry always lands at changelog/entries/{YYYY-MM-DD}/{event_id}.json regardless of this value.'
     required: false
     default: 'changelog/deploys'
+  structured_prefix:
+    description: 'Override S3 key prefix for the structured entry. Default: changelog/entries.'
+    required: false
+    default: 'changelog/entries'
+  subsystem:
+    description: 'Override subsystem (controlled-vocab field). Default: derived from repo via the mapping in the action body.'
+    required: false
+    default: ''
+  resolution_type:
+    description: 'Override resolution_type (controlled-vocab field). Default: code_fix. Use dependency_update for pin-bump deploys, etc.'
+    required: false
+    default: 'code_fix'
 
 runs:
   using: 'composite'
@@ -71,6 +89,9 @@ runs:
         DEPLOY_WORKFLOW: ${{ inputs.deploy_workflow }}
         S3_BUCKET: ${{ inputs.s3_bucket }}
         S3_PREFIX: ${{ inputs.s3_prefix }}
+        STRUCTURED_PREFIX: ${{ inputs.structured_prefix }}
+        SUBSYSTEM_OVERRIDE: ${{ inputs.subsystem }}
+        RESOLUTION_TYPE: ${{ inputs.resolution_type }}
         WORKFLOW_RUN_ID: ${{ github.run_id }}
         WORKFLOW_NAME: ${{ github.workflow }}
         # GH_TOKEN: GitHub auto-provides this for `gh api` calls; the default
@@ -127,12 +148,55 @@ runs:
           FILES_CHANGED=${FILES_CHANGED:-0}
         fi
 
-        S3_KEY="${S3_PREFIX}/${TS_KEY}_${REPO_SHORT}_${SHA7}.json"
+        # Repo → subsystem mapping (controlled-vocab field for the
+        # structured entry). Update when a new module repo lands.
+        # Aligns with the module taxonomy in CLAUDE.md.
+        case "${REPO_SHORT}" in
+          alpha-engine)            DERIVED_SUBSYSTEM="executor" ;;
+          alpha-engine-research)   DERIVED_SUBSYSTEM="research" ;;
+          alpha-engine-predictor)  DERIVED_SUBSYSTEM="predictor" ;;
+          alpha-engine-data)       DERIVED_SUBSYSTEM="data_pipeline" ;;
+          alpha-engine-backtester) DERIVED_SUBSYSTEM="backtester" ;;
+          alpha-engine-dashboard)  DERIVED_SUBSYSTEM="dashboard" ;;
+          alpha-engine-config)     DERIVED_SUBSYSTEM="infrastructure" ;;
+          alpha-engine-docs)       DERIVED_SUBSYSTEM="infrastructure" ;;
+          alpha-engine-lib)        DERIVED_SUBSYSTEM="infrastructure" ;;
+          mnemon)                  DERIVED_SUBSYSTEM="infrastructure" ;;
+          flow-doctor)             DERIVED_SUBSYSTEM="telemetry" ;;
+          *)                       DERIVED_SUBSYSTEM="infrastructure" ;;
+        esac
+        SUBSYSTEM="${SUBSYSTEM_OVERRIDE:-${DERIVED_SUBSYSTEM}}"
 
-        # JSON build via jq (always available on GHA ubuntu-latest runners).
-        # Note: pr_body uses --arg so newlines + special chars round-trip
-        # cleanly; jq handles JSON escaping for us.
-        ENTRY=$(jq -n \
+        # Structured event_id matches the changelog-log CLI scheme so
+        # legacy + structured entries are joinable on (ts + author + summary).
+        TS_ID="${TS_UTC//:/-}"
+        TS_ID="${TS_ID%Z}"
+        DIGEST_INPUT="${TS_UTC}|${ACTOR}|${PR_TITLE}"
+        EVENT_HASH=$(printf '%s' "${DIGEST_INPUT}" | shasum -a 1 | cut -c1-7)
+        EVENT_ID="${TS_ID}_${REPO_SHORT}_${EVENT_HASH}"
+        ENTRY_DATE="${TS_UTC:0:10}"
+
+        # Status → deploy event interpretation:
+        #   success / merged → event_type=change (it shipped, system state changed)
+        #   failure          → event_type=incident (deploy job failed)
+        if [[ "${DEPLOY_STATUS}" == "failure" ]]; then
+          STRUCTURED_EVENT_TYPE="incident"
+          STRUCTURED_SEVERITY="medium"
+          ROOT_CAUSE_CATEGORY="infrastructure_failure"
+        else
+          STRUCTURED_EVENT_TYPE="change"
+          STRUCTURED_SEVERITY=""
+          ROOT_CAUSE_CATEGORY=""
+        fi
+
+        # Both legacy (changelog/deploys/...) AND structured
+        # (changelog/entries/...) keys.
+        LEGACY_KEY="${S3_PREFIX}/${TS_KEY}_${REPO_SHORT}_${SHA7}.json"
+        STRUCTURED_KEY="${STRUCTURED_PREFIX}/${ENTRY_DATE}/${EVENT_ID}.json"
+
+        # Legacy entry — preserved verbatim. Aggregator still reads this
+        # path in PR 2 of the arc; switches to structured-only in PR 4.
+        LEGACY_ENTRY=$(jq -n \
           --arg ts_utc          "${TS_UTC}" \
           --arg event_type      "deploy" \
           --arg repo            "${REPO}" \
@@ -170,9 +234,80 @@ runs:
             workflow_run_id: $workflow_run_id
           }')
 
-        echo "Entry to write (pr_body truncated for log):"
-        echo "${ENTRY}" | jq '.pr_body |= (if length > 200 then .[:200] + "…" else . end)'
-        echo
-        echo "S3 key: s3://${S3_BUCKET}/${S3_KEY}"
+        # Structured entry — schema 1.0.0 per
+        # alpha-engine-config/changelog/vocab.yaml. Carries the controlled-
+        # vocab fields + git_refs + auto_emitted flag. Operator can later
+        # annotate via `changelog-log` if root_cause_category needs filling
+        # (incident path) or any field needs override.
+        PR_URL_BUILT="$( [[ -n "${PR_NUMBER}" ]] && echo "https://github.com/${REPO}/pull/${PR_NUMBER}" || echo "" )"
+        STRUCTURED_ENTRY=$(jq -n \
+          --arg schema_version  "1.0.0" \
+          --arg event_id        "${EVENT_ID}" \
+          --arg ts_utc          "${TS_UTC}" \
+          --arg event_type      "${STRUCTURED_EVENT_TYPE}" \
+          --arg severity        "${STRUCTURED_SEVERITY}" \
+          --arg subsystem       "${SUBSYSTEM}" \
+          --arg root_cause      "${ROOT_CAUSE_CATEGORY}" \
+          --arg resolution_type "${RESOLUTION_TYPE}" \
+          --arg detected_at     "${TS_UTC}" \
+          --arg resolved_at     "${TS_UTC}" \
+          --arg verified_at     "${TS_UTC}" \
+          --arg summary         "${PR_TITLE}" \
+          --arg description     "${PR_BODY}" \
+          --arg actor           "${ACTOR}" \
+          --arg machine         "github-actions" \
+          --arg source          "ci-deploy" \
+          --arg deploy_status   "${DEPLOY_STATUS}" \
+          --arg deploy_workflow "${DEPLOY_WORKFLOW}" \
+          --arg workflow_run_id "${WORKFLOW_RUN_ID}" \
+          --arg repo            "${REPO}" \
+          --arg sha             "${SHA}" \
+          --arg sha7            "${SHA7}" \
+          --argjson pr_number   "${PR_NUMBER:-null}" \
+          --arg pr_url          "${PR_URL_BUILT}" \
+          --argjson files_changed "${FILES_CHANGED}" \
+          '{
+            schema_version: $schema_version,
+            event_id: $event_id,
+            ts_utc: $ts_utc,
+            event_type: $event_type,
+            severity: (if $severity == "" then null else $severity end),
+            subsystem: $subsystem,
+            root_cause_category: (if $root_cause == "" then null else $root_cause end),
+            resolution_type: $resolution_type,
+            started_at: null,
+            detected_at: $detected_at,
+            resolved_at: $resolved_at,
+            verified_at: $verified_at,
+            summary: $summary,
+            description: $description,
+            resolution_notes: null,
+            actor: $actor,
+            machine: $machine,
+            source: $source,
+            auto_emitted: true,
+            git_refs: (if $pr_number == null then [{repo: $repo, sha: $sha}] else [{repo: $repo, sha: $sha, pr_number: $pr_number}] end),
+            prompt_version: null,
+            run_id: null,
+            eval_run_ref: null,
+            deploy: {
+              status: $deploy_status,
+              workflow: $deploy_workflow,
+              workflow_run_id: $workflow_run_id,
+              sha7: $sha7,
+              pr_url: $pr_url,
+              files_changed: $files_changed
+            }
+          }')
 
-        echo "${ENTRY}" | aws s3 cp - "s3://${S3_BUCKET}/${S3_KEY}" --content-type application/json
+        echo "Legacy entry (pr_body truncated for log):"
+        echo "${LEGACY_ENTRY}" | jq '.pr_body |= (if length > 200 then .[:200] + "…" else . end)'
+        echo
+        echo "Structured entry (description truncated for log):"
+        echo "${STRUCTURED_ENTRY}" | jq '.description |= (if length > 200 then .[:200] + "…" else . end)'
+        echo
+        echo "Legacy key:     s3://${S3_BUCKET}/${LEGACY_KEY}"
+        echo "Structured key: s3://${S3_BUCKET}/${STRUCTURED_KEY}"
+
+        echo "${LEGACY_ENTRY}" | aws s3 cp - "s3://${S3_BUCKET}/${LEGACY_KEY}" --content-type application/json
+        echo "${STRUCTURED_ENTRY}" | aws s3 cp - "s3://${S3_BUCKET}/${STRUCTURED_KEY}" --content-type application/json
