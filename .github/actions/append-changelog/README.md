@@ -47,7 +47,73 @@ jobs:
 
 ## What gets written
 
-S3 key: `s3://alpha-engine-research/changelog/deploys/{YYYY}/{MM}/{DD}T{HH-MM-SS}_{repo}_{sha7}.json`
+As of the schema-discipline arc PR 2 (2026-05-01), this action
+**dual-writes** every deploy event:
+
+1. **Structured corpus** (source-of-truth going forward): `changelog/entries/{YYYY-MM-DD}/{event_id}.json`
+2. **Legacy event-typed prefix** (still consumed by the daily aggregator): `changelog/deploys/{YYYY}/{MM}/{DD}T{HH-MM-SS}_{repo}_{sha7}.json`
+
+The dual-write window closes when the aggregator switches to reading
+`entries/` exclusively (PR 4 of the arc) per the CLAUDE.md S3 contract
+("write to BOTH old and new paths for at least 1 week before removing
+the old path").
+
+### Structured entry (schema 1.0.0, `changelog/entries/...`)
+
+```json
+{
+  "schema_version": "1.0.0",
+  "event_id": "2026-05-01T15-23-44_alpha-engine-data_a1b2c3d",
+  "ts_utc": "2026-05-01T15:23:44Z",
+  "event_type": "change",
+  "severity": null,
+  "subsystem": "data_pipeline",
+  "root_cause_category": null,
+  "resolution_type": "code_fix",
+  "started_at": null,
+  "detected_at": "2026-05-01T15:23:44Z",
+  "resolved_at": "2026-05-01T15:23:44Z",
+  "verified_at": "2026-05-01T15:23:44Z",
+  "summary": "feat(daily_append): producer-side universe-freshness scan + S3 receipt",
+  "description": "<full PR body>",
+  "resolution_notes": null,
+  "actor": "cipher813",
+  "machine": "github-actions",
+  "source": "ci-deploy",
+  "auto_emitted": true,
+  "git_refs": [{"repo": "cipher813/alpha-engine-data", "sha": "febaccb...", "pr_number": 119}],
+  "prompt_version": null,
+  "run_id": null,
+  "eval_run_ref": null,
+  "deploy": {
+    "status": "success",
+    "workflow": "deploy.yml",
+    "workflow_run_id": "1234567890",
+    "sha7": "febaccb",
+    "pr_url": "https://github.com/cipher813/alpha-engine-data/pull/119",
+    "files_changed": 8
+  }
+}
+```
+
+`event_type` is `change` for `deploy_status ∈ {success, merged}` and
+`incident` for `failure`. `subsystem` is derived from the repo name
+(see the case-block in `action.yml`); pass `subsystem:` input to
+override. `auto_emitted: true` flags this as written by CI rather
+than by an operator — future aggregation can surface "needs review"
+entries (e.g., incident entries needing a `root_cause_category`).
+
+`pr_number` + `pr_title` are auto-derived from the merge-commit message
+(`<title> (#<number>)` shape from squash/merge-commit/rebase strategies).
+`pr_body` is auto-fetched via `gh api repos/{owner}/{repo}/pulls/{n}`
+using the runner's `GITHUB_TOKEN` (no extra secret to wire). The full PR
+body lands in `description` (untruncated) so retro mining queries have
+the problem-statement + solution-rationale text to grep, not just the
+title.
+
+### Legacy entry (`changelog/deploys/...`)
+
+Verbatim of the pre-PR-2 schema — preserved for the back-compat window:
 
 ```json
 {
@@ -59,7 +125,7 @@ S3 key: `s3://alpha-engine-research/changelog/deploys/{YYYY}/{MM}/{DD}T{HH-MM-SS
   "sha7": "febaccb",
   "pr_number": 119,
   "pr_title": "feat(daily_append): producer-side universe-freshness scan + S3 receipt",
-  "pr_body": "## Summary\nAdds a post-write universe-freshness validation pass to `daily_append()`...",
+  "pr_body": "...",
   "pr_url": "https://github.com/cipher813/alpha-engine-data/pull/119",
   "author": "cipher813",
   "files_changed": 8,
@@ -71,31 +137,26 @@ S3 key: `s3://alpha-engine-research/changelog/deploys/{YYYY}/{MM}/{DD}T{HH-MM-SS
 }
 ```
 
-`pr_number` + `pr_title` are auto-derived from the merge-commit message
-(`<title> (#<number>)` shape from squash/merge-commit/rebase strategies).
-`pr_body` is auto-fetched via `gh api repos/{owner}/{repo}/pulls/{n}` using
-the runner's `GITHUB_TOKEN` (no extra secret to wire). All three are
-overridable via inputs.
-
-The full PR body is preserved (not truncated) in the entry so future
-event-mining queries — "what problems did we face and how did we
-solve them" — have the actual problem-statement + solution-rationale
-text to grep, not just the title. The aggregator truncates for display.
-
 ## Event types + sibling sources
 
-The changelog supports four event types, each at its own S3 sub-prefix:
+The structured corpus uses the controlled-vocab `event_type` from
+`alpha-engine-config/changelog/vocab.yaml` (incident, change, recovery,
+investigation, regression_test_added, prompt_version_change,
+infrastructure_change, eval_score_regression). This action emits
+`change` for successful deploys and `incident` for failed ones.
 
-| event_type | sub-prefix | source |
+Other event types come from sibling tooling:
+
+| Source | event_type emitted | Surface |
 |---|---|---|
-| `deploy`   | `changelog/deploys/`    | this composite action (CI on push-to-main) |
-| `incident` | `changelog/incidents/`  | SNS-to-S3 Lambda subscribed to alpha-engine-alerts |
-| `manual`   | `changelog/manual/`     | operator CLI (`changelog-log` shell helper) |
-| `recovery` | `changelog/recoveries/` | manual CLI or auto-emitted when an alarm clears |
+| this composite action  | `change` / `incident` | CI on push-to-main |
+| SNS-to-S3 mirror Lambda (alpha-engine-data) | `incident` | alpha-engine-alerts SNS subscriber |
+| `changelog-log` CLI    | any                  | operator manual annotations |
 
-The aggregator interleaves all four by timestamp into a single
-`CHANGELOG.md`. Mining queries (`aws s3 ls --recursive` + jq) can scope
-to one type or all.
+The legacy event-typed sub-prefixes (`changelog/deploys/`,
+`changelog/incidents/`, `changelog/manual/`, `changelog/recoveries/`)
+remain populated during the back-compat window for the aggregator to
+keep reading. Aggregator switches to `entries/` in PR 4 of the arc.
 
 ## Reading the materialized changelog
 
