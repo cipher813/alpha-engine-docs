@@ -138,12 +138,30 @@ def _aws_s3_exists(bucket: str, key: str) -> bool:
     return proc.returncode == 0
 
 
-def _event_id(ts_utc: str, actor: str, summary: str) -> str:
+def _event_id(ts_utc: str, actor: str, summary: str, *, segment: str | None = None) -> str:
+    """Build the structured-corpus event_id.
+
+    The digest input is always `{ts_utc}|{actor}|{summary}` (matches the
+    changelog-log CLI + composite action + SNS-mirror Lambda) so the
+    7-char hash is comparable across all writers. The HUMAN-READABLE
+    middle segment, however, varies by emitter:
+
+        composite action  → REPO_SHORT  (e.g. alpha-engine-data)
+        SNS-mirror Lambda → topic name  (e.g. alpha-engine-alerts)
+        changelog-log CLI → actor       (operator's username)
+
+    Pass `segment=` explicitly to match a particular emitter's scheme;
+    omit to default to the actor (matches the CLI). Critical for
+    idempotency — the backfill must produce the same key the auto-emit
+    would have, otherwise the HEAD probe sees no collision and writes
+    a duplicate next to the auto-emit entry.
+    """
     ts_id = ts_utc.replace(":", "-").rstrip("Z")
     digest_input = f"{ts_utc}|{actor}|{summary}".encode()
     h = hashlib.sha1(digest_input).hexdigest()[:7]
-    actor_safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in actor)
-    return f"{ts_id}_{actor_safe}_{h}"
+    middle = segment if segment is not None else actor
+    middle_safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in middle)
+    return f"{ts_id}_{middle_safe}_{h}"
 
 
 def _struct_base(ts_utc: str) -> dict[str, Any]:
@@ -207,7 +225,10 @@ def transform_deploy(legacy: dict[str, Any]) -> dict[str, Any]:
         resolution_type = "code_fix"
 
     out = _struct_base(ts_utc)
-    out["event_id"] = _event_id(ts_utc, actor, pr_title)
+    # Deploy entries use REPO_SHORT for the human-readable segment to match
+    # the composite action's scheme (action.yml line ~176). Mismatch here
+    # produced duplicate entries during the first backfill run on 2026-05-01.
+    out["event_id"] = _event_id(ts_utc, actor, pr_title, segment=repo_short)
     out["event_type"] = event_type
     out["severity"] = severity
     out["subsystem"] = subsystem
