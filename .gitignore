@@ -5,3 +5,7 @@ private/
 .gitleaks.toml
 
 .gitleaksbaseline.json
+
+# Python bytecode (created when scripts/changelog_log.py is imported by tests)
+__pycache__/
+*.pyc
