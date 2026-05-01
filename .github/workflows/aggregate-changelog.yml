@@ -1,17 +1,20 @@
 name: Aggregate system-wide deploy changelog
 
-# Daily cron — lists s3://alpha-engine-research/changelog/, materializes a
-# Markdown view, and writes it back to s3://...changelog/CHANGELOG.md.
+# Daily cron — lists s3://alpha-engine-research/changelog/entries/,
+# materializes a Markdown view, and writes it back to
+# s3://...changelog/CHANGELOG.md.
 #
 # Why S3 (not committed to this repo): alpha-engine-docs is public, but some
 # alpha-engine* repos are private (alpha-engine-config, mnemon proprietary
 # bits) and PR titles can carry proprietary detail. Keeping the materialized
 # CHANGELOG.md in S3 avoids that leak. Local convenience pull:
-#   aws s3 cp s3://alpha-engine-research/changelog/CHANGELOG.md \
-#     ~/Development/alpha-engine-docs/private/CHANGELOG.md
+#   ae-changelog            # alias to scripts/ae-changelog.sh
 #
 # Per the system-wide-changelog preference (memory:
-# preference_alpha_engine_deploy_changelog.md).
+# preference_alpha_engine_deploy_changelog.md). Source-of-truth corpus is
+# the structured entries/ prefix (PR 4 of the schema-discipline arc); the
+# legacy event-typed prefixes (deploys/, incidents/, manual/, recoveries/)
+# are no longer read here.
 
 on:
   schedule:
@@ -45,35 +48,33 @@ jobs:
           set -euo pipefail
 
           BUCKET="alpha-engine-research"
-          PREFIX="changelog/"
 
           mkdir -p /tmp/entries
 
-          # Sync down ALL entry JSONs across event-type sub-prefixes:
-          # changelog/{deploys,incidents,manual,recoveries}/. Each entry
-          # path has the shape `{type}/YYYY/MM/DDTHHMMSS_<...>.json` —
-          # three path segments after the type prefix, so three wildcards
-          # plus the `*.json` terminal segment match correctly. The
-          # earlier four-wildcard form silently matched zero entries
-          # because aws s3 sync's `*` does NOT cross `/` boundaries —
-          # it requires the same number of slashes as the actual key.
-          # The exclude "*" first + per-type include keeps the
-          # materialized CHANGELOG.md at the prefix root from being
-          # re-synced into the entries pool.
-          aws s3 sync "s3://${BUCKET}/${PREFIX}" /tmp/entries \
+          # Sync down all schema-1.0.0 structured entries. PR 4 of the
+          # schema-discipline arc switched the aggregator to read this
+          # prefix exclusively. Path shape: changelog/entries/{YYYY-MM-DD}/
+          # {event_id}.json — two path segments after the type prefix, so
+          # two wildcards plus the *.json terminal segment match correctly.
+          aws s3 sync "s3://${BUCKET}/changelog/entries/" /tmp/entries \
             --exclude "*" \
-            --include "deploys/*/*/*.json" \
-            --include "incidents/*/*/*.json" \
-            --include "manual/*/*/*.json" \
-            --include "recoveries/*/*/*.json"
+            --include "*/*.json"
 
           ENTRY_COUNT=$(find /tmp/entries -name '*.json' | wc -l | tr -d ' ')
           echo "Loaded ${ENTRY_COUNT} entries"
 
+          # Sanity check: low entry count likely means the backfill hasn't
+          # run yet (PR 3 of the arc) or the operator is iterating mid-day.
+          # Warn but don't fail — sparse output is a recoverable state.
+          if (( ENTRY_COUNT < 10 )); then
+            echo "::warning::Structured corpus has only ${ENTRY_COUNT} entries — \
+backfill_changelog.py may not have run yet. Markdown will be sparse until it does."
+          fi
+
           python3 - <<'PY' > /tmp/CHANGELOG.md
           import glob, json
-          from collections import defaultdict
-          from datetime import datetime
+          from collections import Counter, defaultdict
+          from datetime import datetime, timezone
 
           paths = sorted(glob.glob("/tmp/entries/**/*.json", recursive=True),
                          reverse=True)
@@ -83,128 +84,180 @@ jobs:
               try:
                   with open(p) as f:
                       e = json.load(f)
-                  # Backfill event_type from path-prefix when an old entry
-                  # lacks the discriminator (pre-PR-A entries default to deploy).
-                  if "event_type" not in e:
-                      if "/deploys/" in p:
-                          e["event_type"] = "deploy"
-                      elif "/incidents/" in p:
-                          e["event_type"] = "incident"
-                      elif "/manual/" in p:
-                          e["event_type"] = "manual"
-                      elif "/recoveries/" in p:
-                          e["event_type"] = "recovery"
-                      else:
-                          e["event_type"] = "deploy"
                   entries.append(e)
               except Exception as exc:
                   print(f"# WARN: skipping unreadable {p}: {exc}", flush=True)
 
+          # ----- Header summary -------------------------------------------
+          type_counts = Counter(e.get("event_type", "?") for e in entries)
+          subsystem_counts = Counter(
+              e.get("subsystem", "?") for e in entries if e.get("subsystem")
+          )
+          severity_counts = Counter(
+              e.get("severity") for e in entries if e.get("severity")
+          )
+          # "Needs review" = auto_emitted incident with null root_cause_category,
+          # OR backfilled entry with default-ish fields. Surfaces the pile of
+          # entries the operator should refine via follow-up changelog-log
+          # annotations.
+          needs_review = sum(
+              1 for e in entries
+              if e.get("auto_emitted") and e.get("event_type") == "incident"
+              and not e.get("root_cause_category")
+          )
+          backfilled = sum(1 for e in entries if e.get("backfilled"))
+
+          # ----- Group by day --------------------------------------------
           by_day = defaultdict(list)
           for e in entries:
               ts = e.get("ts_utc", "")
               day = ts[:10] if ts else "unknown"
               by_day[day].append(e)
 
-          # Counts by event_type for the header summary.
-          type_counts = defaultdict(int)
-          for e in entries:
-              type_counts[e.get("event_type", "?")] += 1
-          counts_str = ", ".join(f"{k}={v}" for k, v in sorted(type_counts.items()))
-
-          print("# Alpha Engine — System-wide Deploy & Event Changelog")
-          print()
-          print(f"_Auto-generated by `aggregate-changelog.yml` in alpha-engine-docs._  ")
-          print(f"_Source: `s3://alpha-engine-research/changelog/{{deploys,incidents,manual,recoveries}}/`._  ")
-          print(f"_Last aggregated: {datetime.utcnow().isoformat(timespec='seconds')}Z._  ")
-          print(f"_Entries: {len(entries)} ({counts_str}). Repos covered: {len(set(e.get('repo','?') for e in entries))}._")
-          print()
-          print("Event types:")
-          print("- 🚀 **deploy** — code shipped to production via CI")
-          print("- 🚨 **incident** — production failure surfaced (SF/Lambda/CloudWatch alarm)")
-          print("- 🛠 **manual** — operator action (SSH'd in, ran script, applied IAM, etc.)")
-          print("- ✓ **recovery** — system returned to healthy state after an incident")
-          print()
-          print("---")
-          print()
-
-          STATUS_EMOJI = {
-              "success": "✅",
-              "failure": "❌",
-              "merged":  "📥",
-              "fired":   "🚨",  # incident
-              "logged":  "🛠",  # manual
-              "ok":      "✓",  # recovery
-          }
           TYPE_EMOJI = {
-              "deploy":   "🚀",
-              "incident": "🚨",
-              "manual":   "🛠",
-              "recovery": "✓",
+              "incident":               "🚨",
+              "change":                 "🚀",
+              "recovery":               "✓",
+              "investigation":          "🔍",
+              "regression_test_added":  "🧪",
+              "prompt_version_change":  "📝",
+              "infrastructure_change":  "🛠",
+              "eval_score_regression":  "📉",
+          }
+          SEVERITY_EMOJI = {
+              "critical":      "🟥",
+              "high":          "🟧",
+              "medium":        "🟨",
+              "low":           "🟩",
+              "informational": "⬜",
           }
 
           def trunc(s, n):
               if not s:
                   return ""
               s = s.strip()
-              if len(s) <= n:
-                  return s
-              return s[:n].rstrip() + "…"
+              return s[:n].rstrip() + "…" if len(s) > n else s
 
+          def fmt_git_refs(refs):
+              if not refs:
+                  return ""
+              parts = []
+              for r in refs:
+                  repo = r.get("repo", "")
+                  pr = r.get("pr_number")
+                  sha = r.get("sha")
+                  if pr is not None:
+                      parts.append(f"[{repo}#{pr}](https://github.com/{repo}/pull/{pr})")
+                  elif sha:
+                      parts.append(f"[{repo}@{sha[:7]}](https://github.com/{repo}/commit/{sha})")
+                  else:
+                      parts.append(repo)
+              return " · ".join(parts)
+
+          # ----- Render --------------------------------------------------
+          print("# Alpha Engine — System-wide Deploy & Event Changelog")
+          print()
+          print("_Auto-generated by `aggregate-changelog.yml` in alpha-engine-docs._  ")
+          print(f"_Source: `s3://alpha-engine-research/changelog/entries/` (schema 1.0.0)._  ")
+          print(f"_Last aggregated: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')}Z._  ")
+          print(f"_Entries: {len(entries)} · Repos: {len({r.get('repo') for e in entries for r in e.get('git_refs', []) if r.get('repo')})} · Backfilled: {backfilled} · Needs review: {needs_review}._")
+          print()
+
+          print("## Summary")
+          print()
+          if type_counts:
+              type_line = " · ".join(
+                  f"{TYPE_EMOJI.get(t, '•')} {t}: {n}"
+                  for t, n in type_counts.most_common()
+              )
+              print(f"**By event type:** {type_line}  ")
+          if subsystem_counts:
+              subsystem_line = " · ".join(
+                  f"`{s}`: {n}" for s, n in subsystem_counts.most_common()
+              )
+              print(f"**By subsystem:** {subsystem_line}  ")
+          if severity_counts:
+              severity_line = " · ".join(
+                  f"{SEVERITY_EMOJI.get(s, '•')} {s}: {n}"
+                  for s, n in severity_counts.most_common()
+              )
+              print(f"**By severity (incidents only):** {severity_line}  ")
+          if needs_review:
+              print(f"**⚠️ {needs_review} auto-emitted incident(s) need operator review** "
+                    "(missing `root_cause_category`).  ")
+          print()
+
+          print("Schema legend:")
+          print("- 🚨 **incident** — production failure surfaced  ")
+          print("- 🚀 **change** — deliberate state change (deploy, manual action, IAM apply)  ")
+          print("- ✓ **recovery** — system returned to healthy state  ")
+          print("- 🔍 **investigation** — triage/diagnostic with no code change  ")
+          print("- 🧪 **regression_test_added** — test that pins a bug class against recurrence  ")
+          print("- 📝 **prompt_version_change** — prompt registry version bump  ")
+          print("- 🛠 **infrastructure_change** — IaC / SSM / EventBridge / IAM modification  ")
+          print("- 📉 **eval_score_regression** — eval-score regression beyond threshold  ")
+          print()
+          print("---")
+          print()
+
+          # ----- Per-day entries -----------------------------------------
           for day in sorted(by_day.keys(), reverse=True):
               print(f"## {day}")
               print()
-              for e in sorted(by_day[day], key=lambda x: x.get("ts_utc", "")):
+              for e in sorted(by_day[day], key=lambda x: x.get("ts_utc", ""), reverse=True):
                   ts = e.get("ts_utc", "?")[11:19]
-                  etype = e.get("event_type", "deploy")
+                  etype = e.get("event_type", "?")
                   type_emoji = TYPE_EMOJI.get(etype, "•")
+                  severity = e.get("severity")
+                  severity_marker = f" {SEVERITY_EMOJI.get(severity, '')}" if severity else ""
 
-                  if etype == "deploy":
-                      repo = e.get("repo", "?")
-                      pr = e.get("pr_number")
-                      title = e.get("pr_title", "")
-                      sha7 = e.get("sha7", "?")
-                      status = e.get("deploy_status", "?")
-                      workflow = e.get("deploy_workflow") or e.get("workflow_name") or ""
-                      pr_url = e.get("pr_url") or ""
-                      pr_marker = f"[#{pr}]({pr_url})" if pr and pr_url else (f"#{pr}" if pr else "—")
-                      status_emoji = STATUS_EMOJI.get(status, "•")
-                      print(f"- `{ts}Z` {type_emoji} {status_emoji} **{repo}** {pr_marker} — {title}  ")
-                      meta = f"sha `{sha7}`"
-                      if workflow:
-                          meta += f" · workflow `{workflow}`"
-                      print(f"  <sub>{meta}</sub>")
-                      body = trunc(e.get("pr_body", ""), 280)
-                      if body:
-                          # Indent each line of body so it nests under the bullet.
-                          for line in body.splitlines():
-                              print(f"  > {line}")
-                  elif etype == "incident":
-                      source = e.get("source", "?")
-                      summary = e.get("summary", "")
-                      details = trunc(e.get("details", ""), 400)
-                      print(f"- `{ts}Z` {type_emoji} **INCIDENT** ({source}) — {summary}  ")
-                      if details:
-                          for line in details.splitlines():
-                              print(f"  > {line}")
-                  elif etype == "manual":
-                      actor = e.get("actor", "?")
-                      summary = e.get("summary", "")
-                      details = trunc(e.get("details", ""), 400)
-                      print(f"- `{ts}Z` {type_emoji} **MANUAL** ({actor}) — {summary}  ")
-                      if details:
-                          for line in details.splitlines():
-                              print(f"  > {line}")
-                  elif etype == "recovery":
-                      summary = e.get("summary", "")
-                      print(f"- `{ts}Z` {type_emoji} **RECOVERY** — {summary}")
-                  else:
-                      print(f"- `{ts}Z` • **{etype}** — {e.get('summary', e.get('pr_title', '?'))}")
+                  subsystem = e.get("subsystem") or "—"
+                  summary = e.get("summary", "")
+                  actor = e.get("actor", "")
+                  source = e.get("source", "")
+
+                  # Bullet header
+                  badges = []
+                  if e.get("auto_emitted") and not e.get("backfilled"):
+                      badges.append("auto")
+                  if e.get("backfilled"):
+                      badges.append("backfilled")
+                  if e.get("auto_emitted") and etype == "incident" and not e.get("root_cause_category"):
+                      badges.append("⚠️ needs review")
+                  badge_str = f" _{' · '.join(badges)}_" if badges else ""
+
+                  print(f"- `{ts}Z` {type_emoji}{severity_marker} **{etype}** "
+                        f"· `{subsystem}` — {summary}{badge_str}  ")
+
+                  meta_parts = []
+                  if etype == "incident":
+                      rc = e.get("root_cause_category")
+                      meta_parts.append(f"root_cause: `{rc or '—'}`")
+                  rt = e.get("resolution_type")
+                  if rt:
+                      meta_parts.append(f"resolution: `{rt}`")
+                  meta_parts.append(f"actor: `{actor}`")
+                  if source and source not in ("ci-deploy", "sns-mirror"):
+                      meta_parts.append(f"source: `{source}`")
+                  refs = fmt_git_refs(e.get("git_refs", []))
+                  if refs:
+                      meta_parts.append(refs)
+                  if meta_parts:
+                      print(f"  <sub>{' · '.join(meta_parts)}</sub>")
+
+                  desc = trunc(e.get("description") or "", 320)
+                  if desc:
+                      for line in desc.splitlines():
+                          print(f"  > {line}")
+                  notes = trunc(e.get("resolution_notes") or "", 400)
+                  if notes:
+                      print(f"  <br/>  ")
+                      print(f"  > **Resolution:** {notes}")
               print()
           PY
 
           # Upload back to S3.
-          aws s3 cp /tmp/CHANGELOG.md "s3://${BUCKET}/${PREFIX}CHANGELOG.md" \
+          aws s3 cp /tmp/CHANGELOG.md "s3://${BUCKET}/changelog/CHANGELOG.md" \
             --content-type "text/markdown; charset=utf-8"
 
-          echo "::notice::Materialized changelog: s3://${BUCKET}/${PREFIX}CHANGELOG.md (${ENTRY_COUNT} entries)"
+          echo "::notice::Materialized changelog: s3://${BUCKET}/changelog/CHANGELOG.md (${ENTRY_COUNT} entries)"
