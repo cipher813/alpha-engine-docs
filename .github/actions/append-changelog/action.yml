@@ -115,8 +115,17 @@ runs:
           PR_BODY=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' 2>/dev/null || echo "")
         fi
 
-        # Files-changed count (shallow checkout may not have parent — silent 0 in that case).
-        FILES_CHANGED=$(git diff-tree --no-commit-id --name-only -r "${SHA}" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
+        # Files-changed count. Shallow checkouts (default fetch-depth=1) often
+        # lack the parent commit, in which case git diff-tree fails. The
+        # earlier `... | wc -l | tr -d ' ' || echo 0` form double-emitted
+        # under set -o pipefail — pipeline produced "0" + fallback echo
+        # produced "0", capturing as "0\n0" → invalid JSON for --argjson.
+        # Gate on parent-availability instead so the path is unambiguous.
+        FILES_CHANGED=0
+        if git rev-parse --quiet --verify "${SHA}^" >/dev/null 2>&1; then
+          FILES_CHANGED=$(git diff-tree --no-commit-id --name-only -r "${SHA}" 2>/dev/null | wc -l | tr -d ' ')
+          FILES_CHANGED=${FILES_CHANGED:-0}
+        fi
 
         S3_KEY="${S3_PREFIX}/${TS_KEY}_${REPO_SHORT}_${SHA7}.json"
 
