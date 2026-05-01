@@ -1,0 +1,55 @@
+name: Aggregate changelog — weekly rollup
+
+# Weekly cron — produces a rollup of the prior Mon→Sun period from the
+# structured corpus at s3://alpha-engine-research/changelog/entries/ and
+# writes it to s3://alpha-engine-research/changelog/aggregates/weekly/
+# {YYYY-Www}.{json,md}.
+#
+# PR 5 of the schema-discipline arc (ROADMAP > Observability >
+# "System-wide changelog: schema discipline + artifact linking +
+# aggregation layer", sub-item 4). Daily Markdown summary lives in
+# aggregate-changelog.yml in the same directory.
+
+on:
+  schedule:
+    # Mondays 07:00 UTC — runs after the 06:00 UTC daily aggregator so the
+    # corpus is fully synced + any trend deltas reflect the prior week's
+    # last-day entries.
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+    inputs:
+      reference_date:
+        description: 'ISO date (YYYY-MM-DD) to anchor the rollup. Default: today UTC.'
+        required: false
+        default: ''
+
+concurrency:
+  group: aggregate-changelog-weekly
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  rollup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::711398986525:role/github-actions-lambda-deploy
+          aws-region: us-east-1
+
+      - name: Generate weekly rollup
+        run: |
+          set -euo pipefail
+          REF_ARG=""
+          if [[ -n "${{ inputs.reference_date }}" ]]; then
+            REF_ARG="--reference-date ${{ inputs.reference_date }}"
+          fi
+          python3 scripts/aggregate_periodic.py --period weekly $REF_ARG

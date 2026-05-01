@@ -107,6 +107,45 @@ the `aws` CLI via subprocess.
 12-case transform suite (deploy → change/incident, incident, manual
 → change, recovery, subsystem inference, deterministic event_id).
 
+## `aggregate_periodic.py` — weekly + monthly rollups
+
+Generates structured rollup aggregates of the structured changelog
+corpus over weekly + monthly windows. Invoked by the
+`aggregate-changelog-weekly.yml` (Mondays 07:00 UTC) and
+`aggregate-changelog-monthly.yml` (1st of month 08:00 UTC) cron
+workflows in this repo. Each run reads
+`s3://alpha-engine-research/changelog/entries/` and writes:
+
+- `s3://alpha-engine-research/changelog/aggregates/{period_type}/{period_id}.json`
+- `s3://alpha-engine-research/changelog/aggregates/{period_type}/{period_id}.md`
+
+PR 5 of the schema-discipline arc — sub-item 4 of the ROADMAP item.
+Daily rollup lives in `aggregate-changelog.yml`.
+
+```bash
+# Local dry-run against the live corpus (downloads to a temp dir)
+python3 scripts/aggregate_periodic.py --period weekly --dry-run
+python3 scripts/aggregate_periodic.py --period monthly --dry-run
+
+# Anchor the rollup to a specific date — useful for backfilling old periods
+python3 scripts/aggregate_periodic.py --period weekly --reference-date 2026-04-20
+
+# Use a local corpus dir (skips the S3 sync)
+python3 scripts/aggregate_periodic.py --period weekly --corpus-dir /tmp/entries
+```
+
+Each rollup contains entry counts by `event_type` / `subsystem` /
+`severity` / `root_cause_category` / `resolution_type`, incident
+metrics (count, MTTD + MTTR with mean / p50 / p95), longest-lived
+open issues (entries with `started_at` populated but `resolved_at`
+null), and deltas vs the prior period (entry count, incident count,
+MTTR mean).
+
+**Tests** — `python3 scripts/test_aggregate_periodic.py` runs the
+14-case suite (period boundary math, rollup counts, incident metric
+computation, open-issue selection, delta computation, markdown
+render, second-formatting helpers).
+
 ## `ae-changelog` — pull aggregated CHANGELOG.md as a versioned snapshot
 
 ```bash
