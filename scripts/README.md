@@ -4,18 +4,45 @@ Local + on-machine helpers for the system-wide changelog mining surface.
 None of these are auto-invoked; they exist for the operator to drop
 manual annotations into the changelog or pull aggregated views locally.
 
-## `changelog-log` — manual annotations
+## `changelog-log` — structured manual annotations
 
-Drops a JSON entry into `s3://alpha-engine-research/changelog/{event_type}s/`
-so manual operator actions interleave with auto-emitted deploys + incidents
-in the daily-aggregated `CHANGELOG.md`.
+Drops a JSON entry into `s3://alpha-engine-research/changelog/entries/{YYYY-MM-DD}/`
+(structured corpus, source-of-truth) AND mirrors to the legacy
+`changelog/{deploys,incidents,manual,recoveries}/` prefix during the
+back-compat window so manual operator actions interleave with auto-emitted
+deploys + incidents in the daily-aggregated `CHANGELOG.md`.
 
 ```bash
-changelog-log manual    "Patched live SF DeployDriftCheck timeout 60→300"
-changelog-log recovery  "Morning planner ran clean — order book written"
-changelog-log incident  "Daemon hung on ae-trading; killed pid 12345"
-changelog-log manual    "Ran daily_append manually" --details "Specific notes…"
+# Incident — all 4 timestamps + root cause + ≥ 200-char resolution narrative
+changelog-log \
+  --event-type incident --severity high --subsystem infrastructure \
+  --root-cause infrastructure_failure \
+  --started-at  2026-05-01T13:00:00Z \
+  --detected-at 2026-05-01T13:01:00Z \
+  --resolved-at 2026-05-01T14:30:00Z \
+  --verified-at 2026-05-01T14:35:00Z \
+  --summary "SF DeployDriftCheck timeout cascade" \
+  --resolution-notes "yfinance VWAP=None silently coerced to NaN downstream → universe-wide signal degradation. Switched to Polygon as primary source + added explicit null-handling at ingest. Added regression test for null-VWAP handling."
+
+# Manual operator action (event_type=change, resolution_type=manual_intervention)
+changelog-log \
+  --event-type change --subsystem executor \
+  --resolution-type manual_intervention \
+  --detected-at 2026-05-01T19:00:00Z \
+  --resolved-at 2026-05-01T19:05:00Z \
+  --verified-at 2026-05-01T19:06:00Z \
+  --summary "Killed hung daemon pid 12345 on ae-trading"
+
+# Investigation that produced no code change
+changelog-log \
+  --event-type investigation --subsystem predictor \
+  --detected-at 2026-05-01T19:00:00Z \
+  --summary "Triaged GBM IC drop — turned out to be expected post-retrain noise"
 ```
+
+The legacy positional form (`changelog-log manual "summary"`) was removed
+in PR 1 of the schema-discipline arc; the bash shim prints a migration
+message + exits non-zero if invoked that way.
 
 **Setup** — add to `~/.zshrc`:
 
@@ -23,16 +50,26 @@ changelog-log manual    "Ran daily_append manually" --details "Specific notes…
 alias changelog-log="$HOME/Development/alpha-engine-docs/scripts/changelog-log.sh"
 ```
 
+**Vocab** — the CLI reads `~/Development/alpha-engine-config/changelog/vocab.yaml`
+(override via `$ALPHA_ENGINE_CONFIG` or `$ALPHA_ENGINE_CHANGELOG_VOCAB`). Allowed
+values for `--event-type`, `--severity`, `--subsystem`, `--root-cause`,
+`--resolution-type` are listed there. Invalid values fail validation and the
+entry is NOT written.
+
 **Auth** — uses active AWS CLI creds. Needs `s3:PutObject` on
 `arn:aws:s3:::alpha-engine-research/changelog/*`. The `cipher813` IAM user
 already has it; for other operators, grant separately.
 
-**Why this exists** — the auto-emitted deploy + incident streams capture
-CI events. They don't capture operator interventions like "I patched the
-live SF" or "I ssh'd in and restarted the daemon." Without manual
-annotations, retro queries months later can't reconstruct what happened —
-the deploy log shows the fix PRs, but not the operator actions that
-unblocked the day. This script closes that gap.
+**Why structured** — freeform-text entries can't answer "show every retrieval
+issue in Q3" or "every prompt regression linked to version X.Y.Z." The
+controlled-vocab fields convert the changelog from a WIP narrative into a
+queryable dataset. See ROADMAP > Observability > "System-wide changelog:
+schema discipline + artifact linking + aggregation layer" (P1) for the full
+arc; this is PR 1 (writer + vocab).
+
+**Tests** — `python3 scripts/test_changelog_log.py` runs the smoke suite
+(17 cases covering vocab loading, validation rules, S3 key derivation, the
+legacy-shim error path, and an end-to-end --dry-run).
 
 ## `ae-changelog` — pull aggregated CHANGELOG.md as a versioned snapshot
 
