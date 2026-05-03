@@ -41,6 +41,21 @@ This is the central narrative for everything you'll read across the repos and su
 
 **Phase 2 thesis:** before you can systematically generate alpha, you need to be able to systematically measure every component. The presentation layer everywhere leads with reliability and measurement — pipeline success rates, recovery times, signal/prediction/fill traceability, autonomous feedback-loop visibility — not with returns. Returns appear honestly as a Phase 2 baseline, contextualized as the metric Phase 3 is engineered to inflect.
 
+## Roadmap — current state vs ideal state
+
+High-level forward direction per module. Not a tactical checklist; this is where Phase 3+ is engineered to take each piece.
+
+| Module | Today | Ideal state |
+|---|---|---|
+| **Data** | ~50 engineered features × ~900 tickers × 10y in ArcticDB; weekly refresh | Broader alternative-data, options-derived, and sentiment coverage; drift-monitored per feature group; sub-daily refresh where signal warrants it |
+| **Research** | 6 sector teams + CIO + macro economist; weekly scan; rubric-based LLM-as-judge on key stages | Higher-cadence research (toward daily); broader judge rubric coverage with two-tier orchestration; conviction-driven mid-week rebalancing |
+| **Predictor** | 3 specialized Layer-1 models (LightGBM momentum + LightGBM volatility + lookup-table research-score calibrator) feeding L2 Ridge; 21 features in production inference | All L1 components as real models (calibrator → GBM; regime model returns as LightGBM with triple-barrier labels); broader feature breadth in inference toward the ~50-feature store universe; ensemble diversity across model classes |
+| **Executor** | Risk-gated paper trading via IB Gateway; 4 entry-trigger types; ATR trailing stops | Live capital (Phase 4); portfolio-level risk overlays beyond per-position gates; tax-aware position management |
+| **Backtester** | Weekly evaluator + autonomous optimizers writing 4 configs to S3 | Causal attribution per signal source; regime-conditional config sets; counterfactual analysis |
+| **Dashboard** | Read-only Streamlit; portfolio, signals, predictor, retros | Signal lifecycle view; feedback-loop visualization; feature store and RAG inventory pages; `/metrics` validation page |
+
+Phase 3 begins when Phase 2 reliability metrics meet their gating criteria. Phase 4 (live capital) begins when Phase 3 demonstrates sustained outperformance under walk-forward validation.
+
 ## Modules
 
 Each repo is a single module with one responsibility. Public READMEs follow a [shared template](templates/README_TEMPLATE.md); deeper code tours live in each repo's `OVERVIEW.md`.
@@ -51,7 +66,7 @@ Each repo is a single module with one responsibility. Public READMEs follow a [s
 | **Research** | [`alpha-engine-research`](https://github.com/cipher813/alpha-engine-research) | LangGraph multi-agent investment research — 6 sector teams + CIO + macro economist; ~900-stock weekly scan | Composite scores + sub-score attribution, LLM-as-judge rubric scores |
 | **Predictor** | [`alpha-engine-predictor`](https://github.com/cipher813/alpha-engine-predictor) | Stacked meta-ensemble — Layer-1 LightGBM momentum + LightGBM volatility + research-score calibrator feed a Layer-2 Ridge meta-learner; 5-day market-relative alpha + veto gate | Ensemble IC (L2) + per-L1 component IC, calibration |
 | **Executor** | [`alpha-engine`](https://github.com/cipher813/alpha-engine) | Risk-gated position sizing, intraday entry triggers (pullback / VWAP / support / time-expiry), trailing stops; IB Gateway via IBC | Fill stats, slippage, sizing decision attribution |
-| **Backtester** | [`alpha-engine-backtester`](https://github.com/cipher813/alpha-engine-backtester) | Signal quality evaluation, regime + score-bucket analysis, 6 autonomous optimizers; auto-applies configs to S3 each week | Signal accuracy 10d/30d, attribution, optimizer convergence |
+| **Backtester** | [`alpha-engine-backtester`](https://github.com/cipher813/alpha-engine-backtester) | Signal quality evaluation, regime + score-bucket analysis, autonomous optimizers writing four configs to S3 weekly (scoring weights, executor params, predictor veto threshold, research params) | Signal accuracy 10d/30d, attribution, optimizer convergence |
 | **Dashboard** | [`alpha-engine-dashboard`](https://github.com/cipher813/alpha-engine-dashboard) | Read-only Streamlit monitoring — portfolio, signals, system report card; powers both [nousergon.ai](https://nousergon.ai) (public) and `dashboard.nousergon.ai` (private, Cloudflare Access) | (Surfaces what the others measure) |
 
 Plus a private [`alpha-engine-config`](https://github.com/cipher813/alpha-engine-config) repo holding proprietary scoring weights, agent prompts, model parameters, and other tuned values. **Disclosure boundary** is per-module: architecture and approach are public; specific weights / prompts / thresholds are private.
