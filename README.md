@@ -39,7 +39,7 @@ This is the central narrative for everything you'll read across the repos and su
 | **Phase 3** | Parameter tuning toward alpha | ⏳ Next — backtester→config feedback loop already wired |
 | **Phase 4** | Live capital | ⏳ Gated on Phase 3 sustained outperformance |
 
-**Phase 2 thesis:** before you can systematically generate alpha, you need to be able to systematically measure every component. The presentation layer everywhere leads with reliability and measurement — pipeline success rates, recovery times, signal/prediction/fill traceability, autonomous feedback-loop visibility — not with returns. Returns appear honestly as a Phase 2 baseline, contextualized as the metric Phase 3 is engineered to inflect.
+**Phase 2 thesis:** before you can systematically generate alpha, you need to be able to systematically measure every component. The presentation layer everywhere leads with reliability and measurement — pipeline success rates, recovery times, signal/prediction/fill traceability, autonomous feedback-loop visibility — not with returns.
 
 ## Roadmap — current state vs ideal state
 
