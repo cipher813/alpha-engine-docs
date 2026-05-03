@@ -1,0 +1,94 @@
+/* Nous Ergon design tokens — CSS custom properties.
+ * Mirrors design_tokens.json. Single source of truth lives in the JSON;
+ * this file is a CSS-friendly alias for direct stylesheet use.
+ *
+ * Source: extracted 2026-05-03 from alpha-engine-dashboard/public/.streamlit/config.toml
+ * and alpha-engine-dashboard/public/components/styles.py.
+ *
+ * Mode: dark (pure-black canvas, Google-blue accent).
+ *
+ * Use cases:
+ *   - Public site (Streamlit + custom CSS in styles.py): already applies these values
+ *   - Private dashboard: import these tokens for visual parity
+ *   - Custom HTML/markdown: link in <head>
+ */
+
+:root {
+  /* Brand */
+  --color-brand-primary: #1a73e8;
+  --color-brand-primary-hover: #4a9af5;
+  --color-brand-secondary: #0e1117;
+  --color-accent: #1a73e8;
+
+  /* Surfaces (dark canvas, translucent layered surfaces) */
+  --color-background: #000000;
+  --color-background-alt: #0e1117;
+  --color-surface-streamlit-secondary: #1a1f2e;
+  --color-surface-translucent-lo: rgba(255, 255, 255, 0.03);
+  --color-surface-translucent-md: rgba(255, 255, 255, 0.06);
+  --color-surface-translucent-hi: rgba(255, 255, 255, 0.08);
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-border-default: rgba(255, 255, 255, 0.1);
+
+  /* Text */
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #cfcfcf;
+  --color-text-muted: #888888;
+
+  /* Semantic */
+  --color-success: #2ca02c;
+  --color-warning: #e9c46a;
+  --color-error: #d62728;
+  --color-phase-2: #e9c46a;
+
+  /* Chart colors (Plotly-aligned + brand-blue primary) */
+  --color-chart-portfolio: #1a73e8;
+  --color-chart-spy: #7f7f7f;
+  --color-chart-ic-positive: #2ca02c;
+  --color-chart-ic-negative: #d62728;
+  --color-chart-cat-1: #1a73e8;
+  --color-chart-cat-2: #ff7f0e;
+  --color-chart-cat-3: #2ca02c;
+  --color-chart-cat-4: #d62728;
+  --color-chart-cat-5: #9467bd;
+  --color-chart-cat-6: #7f7f7f;
+
+  /* Typography */
+  --font-family-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-family-mono: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  --font-size-base: 16px;
+  --font-size-h1: 2.5rem;
+  --font-size-h2: 2rem;
+  --font-size-h3: 1.5rem;
+  --font-size-h4: 1.25rem;
+  --font-size-metric-value: 24px;
+  --font-size-metric-label: 12px;
+  --font-size-small: 0.875rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --line-height-body: 1.6;
+  --line-height-heading: 1.2;
+
+  /* Spacing */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4rem;
+  --space-metric-card-padding: 12px 16px;
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 9999px;
+
+  /* Shadows (dark-mode tuned, deeper alphas) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+}
