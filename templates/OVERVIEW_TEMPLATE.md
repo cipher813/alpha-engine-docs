@@ -1,240 +1,113 @@
-# OVERVIEW.md Template — Per-Module Code Tour
+# OVERVIEW.md Template — Per-Module Code Index
 
-Canonical structure for each public alpha-engine repo's `OVERVIEW.md` — the comprehensive annotated code tour an interviewer reads before asking deep questions.
+Canonical structure for each public alpha-engine repo's `OVERVIEW.md`. **An index of where the code lives, not a tour of how it works.** A tool for Brian + viewers to find their way around the repo without reading every file.
 
-> Per the presentation-revamp plan §1.2. **Goal: comprehensive coverage of the repo's substantive code, not a top-5 list.** Readers navigate by tier; comprehensive is fine.
-
-**Length:** 5–15 pages is appropriate. Use `<details>` blocks for Tier 3 / Tier 4 to keep the page scannable.
+> Per the presentation-revamp plan §1.2. Companion: [`README_TEMPLATE.md`](README_TEMPLATE.md) for the bird's-eye README.
 
 ---
 
-## Section order (locked across all 6 module repos)
+## Three-tier presentation surface (locked)
 
-1. Module purpose (2 sentences)
-2. Phase context — what this module measures and why that matters for Phase 3
-3. Architecture diagram (more detailed than README's)
-4. **Tier 1 — Critical path files** (3–7 files, deep annotation)
-5. **Tier 2 — Substantive supporting code** (grouped by purpose)
-6. **Tier 3 — Infrastructure and glue** (collapsed by category)
-7. **Tier 4 — Tests and fixtures** (layout + conventions)
-8. Data contracts (S3 paths, JSON schemas, ArcticDB libraries, SQLite tables)
-9. Configuration (local vs `alpha-engine-config`)
-10. Deployment
-11. Failure modes + retros
-12. Measurement surfaces (Phase 2 framing — what telemetry this module emits, where to find it on the dashboard, what each surface proves)
-13. Next-question pointers — anticipates the interviewer's next 5–10 questions
+| Surface | Audience | Scope | Public? |
+|---|---|---|---|
+| **README** (~60 lines) | Recruiters skimming, casual visitors | What is this module | ✅ |
+| **OVERVIEW.md** (~80 lines) | Interviewers digging in, future-you finding code | Where is the code | ✅ |
+| **`private/interview_kit/`** | Brian during interview prep / live demo | How does it work + what to say if asked X | ❌ |
+
+**OVERVIEW.md answers "where is the code." Nothing more.**
+
+What does NOT belong in OVERVIEW.md:
+- Code-tour with line ranges and key-function annotation → `private/interview_kit/talking_points/0X_<module>.md`
+- Trade-offs commentary, design-rationale prose → `private/interview_kit/architecture_decision_log.md`
+- Failure modes + retros → `private/interview_kit/retros_private/`
+- "If asked X look at file Y" pointers → `private/interview_kit/talking_points/0X_<module>.md`
+- Anticipated interview questions + answers → `private/interview_kit/talking_points/0X_<module>.md`
+
+If you find yourself writing prose that explains *why* a design choice was made, that prose belongs in the private interview kit, not in OVERVIEW.md.
 
 ---
 
-## Tier definitions
+## Section order (locked — 7 sections, optionally 8)
 
-- **Tier 1 — Critical path (must-read).** The 3–7 files that define the module's core behavior. If an interviewer reads only these, they understand what the module does and how. Annotated heavily: file path · key function names with line ranges · what to notice · trade-offs taken · why this design.
-- **Tier 2 — Substantive supporting code.** Files that implement secondary but important behavior — risk gates, feature engineering, data adapters, scoring helpers, retry logic, etc. Annotated lightly: file path · one-paragraph purpose · 2–3 key functions called out by name.
-- **Tier 3 — Infrastructure and glue.** Config loaders, S3 helpers, logging, utility modules, prompt loaders, deployment scripts, IAM helpers. Annotated minimally: file path · one-line purpose. Grouped by category. **Collapsed by default.**
-- **Tier 4 — Tests and fixtures.** Test layout (e.g., `tests/unit/`, `tests/integration/`, fixture conventions, replay-based LLM testing pattern). Surface this as evidence of testing discipline; don't enumerate every test file. **Collapsed by default.**
+1. **H1 + one-line context** — repo name; pointer back to README + system overview
+2. **Module purpose** (one sentence) — same as README open; duplication is fine in an index
+3. **Architecture** *(optional)* — skip if the README's diagram is sufficient. If kept, slightly more detail than the README's, still high-level.
+4. **Entry points** — 2–3 files where execution starts (e.g., `lambda/handler.py`, `weekly_collector.py`, `daemon.py`). Just file links + one-line description each.
+5. **Where things live** — concept → file map. *"scoring formula → `scoring/composite.py`; trade logger → `executor/trade_logger.py`"* — an index for finding code without reading the whole repo.
+6. **Inputs / outputs** — S3 paths the module reads + writes. Tables, no schemas, no commentary.
+7. **Run modes** — production cadence + dry-run + stub. Three rows max, no walkthrough.
+8. **Tests** *(optional, one paragraph)* — `tests/` layout + conventions. Skip if there's nothing distinctive about the suite.
+
+Target length: **60–100 lines per repo**. Each row of each table is a couple words to a half-sentence.
 
 ---
 
 ## Boilerplate (copy-paste, fill in `<>` placeholders)
 
 ```markdown
-# alpha-engine-<module> — Code Tour
+# alpha-engine-<module> — Code Index
 
-> Comprehensive annotated tour of this repo's substantive code. Companion to [README.md](README.md). Readers navigate by tier — Tier 1 is must-read, Tiers 3–4 are collapsed by default.
+> Index of entry points, key files, and data contracts for this repo. Companion to [README.md](README.md). System overview lives in [`alpha-engine-docs`](https://github.com/cipher813/alpha-engine-docs).
 >
 > Last reviewed: <YYYY-MM-DD>
 
 ## Module purpose
 
-<Two sentences: what this module does, why it exists in the larger system.>
+<One sentence — same as README open.>
 
-## Phase context
+## Architecture (optional)
 
-This module's Phase 2 contribution: <what it measures · what telemetry it emits · why that's load-bearing for Phase 3 alpha tuning>.
+<Skip if README's diagram is enough. If kept, slightly more detailed mermaid flow.>
 
-## Architecture
+## Entry points
 
-```mermaid
-<MORE-DETAILED MODULE-INTERNAL DIAGRAM than the one in README.md — full state machine / data flow / component graph>
-```
+| File | What it does |
+|---|---|
+| [`<file.py>`](<path>) | <One-line description> |
+| [`<file.py>`](<path>) | <One-line description> |
 
-<1–2 paragraphs of design rationale. What trade-offs were taken. What was considered and rejected.>
+## Where things live
 
----
+| Concept | File |
+|---|---|
+| <Concept 1> | [`<path/file.py>`](<path/file.py>) |
+| <Concept 2> | [`<path/file.py>`](<path/file.py>) |
+| <Concept 3> | [`<path/file.py>`](<path/file.py>) |
+| <…> | <…> |
 
-## Tier 1 — Critical path files
-
-If you only read these, you understand the module.
-
-### [`<file1.py>`](<path>) — <one-line purpose>
-
-**Key functions:**
-- [`<function_name>`](<path#L<start>-L<end>>) — <what it does, what to notice>
-- [`<function_name>`](<path#L<start>-L<end>>) — <what it does, what to notice>
-
-**Trade-offs taken:**
-- <Decision and rationale — interviewer-grade explanation>
-
-**What to notice:**
-- <Subtle invariant, edge case, or non-obvious design>
-
-### [`<file2.py>`](<path>) — <one-line purpose>
-
-<Same structure.>
-
-<!-- Repeat for 3–7 files total -->
-
----
-
-## Tier 2 — Substantive supporting code
-
-Grouped by purpose.
-
-### Risk and sizing
-- [`<file>`](<path>) — <paragraph on what this implements; key functions: `<fn1>`, `<fn2>`, `<fn3>`>
-- [`<file>`](<path>) — <paragraph; key functions>
-
-### Data ingestion
-- [`<file>`](<path>) — <paragraph; key functions>
-
-### Scoring + composition
-- [`<file>`](<path>) — <paragraph; key functions>
-
-### Persistence
-- [`<file>`](<path>) — <paragraph; key functions>
-
-<!-- Adjust group headings per repo. Each group: 1-5 files. -->
-
----
-
-## Tier 3 — Infrastructure and glue
-
-<details>
-<summary>Configuration + secrets</summary>
-
-- [`<file>`](<path>) — <one-line purpose>
-- [`<file>`](<path>) — <one-line purpose>
-
-</details>
-
-<details>
-<summary>S3 + storage helpers</summary>
-
-- [`<file>`](<path>) — <one-line purpose>
-- [`<file>`](<path>) — <one-line purpose>
-
-</details>
-
-<details>
-<summary>Logging + observability</summary>
-
-- [`<file>`](<path>) — <one-line purpose>
-
-</details>
-
-<details>
-<summary>Deployment + IAM</summary>
-
-- [`<file>`](<path>) — <one-line purpose>
-
-</details>
-
-<details>
-<summary>Utilities</summary>
-
-- [`<file>`](<path>) — <one-line purpose>
-
-</details>
-
----
-
-## Tier 4 — Tests and fixtures
-
-<details>
-<summary>Test layout</summary>
-
-- `tests/unit/` — <count> tests, scope: <pure-function unit tests>
-- `tests/integration/` — <count> tests, scope: <S3-roundtrip, DB writes, etc.>
-- `tests/replay/` — <count> tests, scope: <LLM fixture replay if applicable>
-- Total test surface: <count>
-
-**Conventions:**
-- <Fixture pattern, e.g., "all LLM responses replayed from `tests/fixtures/llm/`">
-- <Coverage targets, marker conventions>
-
-</details>
-
----
-
-## Data contracts
+## Inputs / outputs
 
 ### Reads
-| Source | Path / location | Format | Used for |
-|---|---|---|---|
-| <Source> | <path> | <format> | <use> |
+| Source | Path |
+|---|---|
+| <Source> | <path> |
 
 ### Writes
-| Destination | Path / location | Format | Schema |
-|---|---|---|---|
-| <Dest> | <path> | <format> | <schema link> |
+| Destination | Path |
+|---|---|
+| <Dest> | <path> |
 
-### Schemas
-- [`<schema_name>`](<path or link>) — <one-line description>
+## Run modes
 
-## Configuration
-
-### Local (`config.yaml` — gitignored)
-<What's here, why it's local.>
-
-### Private repo (`alpha-engine-config`)
-<What's there: prompts, weights, scoring params, etc.>
-
-### Environment variables
-<List of env vars + what they're for. Never include actual values.>
-
-## Deployment
-
-- **Target:** <Lambda / EC2 / spot>
-- **Trigger:** <SF step name / EventBridge / systemd>
-- **Schedule:** <cron / on-event>
-- **Deploy mechanism:** <`deploy.sh` / `git pull` on boot / etc.>
-- **Local run:** <command>
-- **Dry run:** <command>
-
-## Failure modes + retros
-
-This module has been through <N> production incidents. Each retro: symptoms → root cause → fix → systemic improvement.
-
-| Date | Incident | Public retro |
+| Mode | Where | Command |
 |---|---|---|
-| <YYYY-MM-DD> | <One-line summary> | <link to /retros> |
+| Production | <Lambda / EC2 / spot / systemd> | <deploy mechanism, e.g. `./infrastructure/deploy.sh main`> |
+| Dry run | Local | `<command>` |
+| Stub run (no API spend) | Local | `<command>` *(if applicable)* |
 
-## Measurement surfaces
+## Tests (optional)
 
-What telemetry this module emits — Phase 2 receipts.
-
-| Surface | What it proves | Where to find it |
-|---|---|---|
-| <Log line / S3 artifact / SQLite table> | <What this proves about the system> | <Dashboard page or path> |
-
-## Next-question pointers
-
-Anticipated interviewer questions and where to look:
-
-- *"How does <X> work?"* → start with [`<file>`](<path>); then read [`<file>`](<path>).
-- *"What happens when <edge case>?"* → see [`<file:line>`](<path#L>) — handled by `<function>`.
-- *"Why <design choice X> instead of <Y>?"* → see [Architecture](#architecture) trade-off paragraph; deeper retro at <link>.
-- *"How is <Y> tested?"* → [Tier 4 — Tests](#tier-4--tests-and-fixtures).
-- *"What's the failure mode if <Z>?"* → [Failure modes + retros](#failure-modes--retros).
+<One paragraph: test layout (`tests/unit/`, `tests/integration/`, fixtures, replay patterns); test count and conventions. Skip if not distinctive.>
 ```
 
 ---
 
 ## Notes on applying this template
 
-- **Comprehensive, not exhaustive.** Tier 3 and Tier 4 are collapsed; readers can pick depth. Don't enumerate every test file by name; describe layout and conventions.
-- **Tier assignment is editorial.** A file isn't Tier 1 because it's long; it's Tier 1 because reading it teaches the module's core behavior. Be opinionated.
-- **Cite specific line ranges** in Tier 1 where helpful — `path#L42-L78`. Costs nothing to write, lets the reader jump straight to the substance.
-- **Trade-offs sections are interviewer catnip.** Even one well-written trade-off note per Tier 1 file is more valuable than a paragraph of generic description.
-- **Phase 2 framing in the Phase context section is mandatory** — same as README. Ties the document back to the central narrative.
-- **Keep it current.** When code shifts substantially, update OVERVIEW.md in the same PR.
+- **No code-tour with line ranges.** If `path/file.py` is interesting enough to annotate at the line level, that annotation belongs in `private/interview_kit/talking_points/0X_<module>.md`.
+- **No design rationale prose.** *"We chose X over Y because Z"* belongs in `private/interview_kit/architecture_decision_log.md`.
+- **No "What this measures" or Phase 2 contribution paragraph.** That's a README concept; OVERVIEW.md skips it.
+- **Each table row is a one-liner.** If a row needs a paragraph of explanation, the explanation belongs private.
+- **Architecture diagram is optional.** Don't duplicate the README's diagram unless the OVERVIEW version genuinely shows more useful detail without slipping into "how does it work."
+- **No "Failure modes" / retros section.** Public retros live on `nousergon.ai/retros`; private retros live in `private/interview_kit/retros_private/`.
+- **Resist drift back toward the old tier-based code tour.** Tier 1/2/3/4 was previously the locked structure; it's been retired in favor of this lean index.
