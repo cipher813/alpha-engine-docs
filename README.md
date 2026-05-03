@@ -26,7 +26,7 @@ Four capabilities define the system:
 
 The substrate is equities; the pattern is general. The orchestration, measurement, and learning loops apply anywhere multi-agent collaboration and durable instrumentation matter.
 
-The current chapter is **Phase 2: Reliability Buildout** — making the measurement substrate trustworthy enough that Phase 3 (parameter tuning toward sustained outperformance) operates on solid ground. Long-term alpha (portfolio return minus SPY, risk-adjusted) is the eventual target Phase 3 is engineered to inflect toward; it is not a present-tense claim.
+The current chapter is **Phase 2: Reliability Buildout** — making the measurement substrate trustworthy enough that Phase 3 (parameter tuning toward sustained outperformance) operates on solid ground. Long-term alpha — portfolio return minus SPY, risk-adjusted — is the metric Phase 3 is engineered to inflect.
 
 ## Phase trajectory
 
