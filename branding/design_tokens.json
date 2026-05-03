@@ -1,0 +1,98 @@
+{
+  "_comment": "Canonical design tokens for Nous Ergon. Single source of truth for all surfaces — repo READMEs, badge bar, OG images, public website (nousergon.ai), private dashboard (dashboard.nousergon.ai). Extracted 2026-05-03 from alpha-engine-dashboard/public/.streamlit/config.toml + alpha-engine-dashboard/public/components/styles.py.",
+  "_version": "1.0.0",
+  "_source_of_truth_streamlit": "alpha-engine-dashboard/public/.streamlit/config.toml",
+  "_source_of_truth_css": "alpha-engine-dashboard/public/components/styles.py",
+
+  "brand": {
+    "name": "Nous Ergon",
+    "name_greek": "νοῦς ἔργον",
+    "project_name": "Alpha Engine",
+    "tagline": "Autonomous Multi-Agent Trading System",
+    "phase": "Phase 2 · Reliability",
+    "mode": "dark"
+  },
+
+  "colors": {
+    "_comment_brand": "Google-blue accent over pure-black canvas — extracted from public site",
+    "brand_primary": "#1a73e8",
+    "brand_primary_hover": "#4a9af5",
+    "brand_secondary": "#0e1117",
+    "accent": "#1a73e8",
+
+    "_comment_surfaces": "Pure black canvas, layered translucent whites for surfaces — matches logo",
+    "background": "#000000",
+    "background_alt": "#0e1117",
+    "surface_streamlit_secondary": "#1a1f2e",
+    "surface_translucent_lo": "rgba(255,255,255,0.03)",
+    "surface_translucent_md": "rgba(255,255,255,0.06)",
+    "surface_translucent_hi": "rgba(255,255,255,0.08)",
+    "border_subtle": "rgba(255,255,255,0.08)",
+    "border_default": "rgba(255,255,255,0.1)",
+
+    "_comment_text": "Near-white primary; muted gray for labels",
+    "text_primary": "#fafafa",
+    "text_secondary": "#cfcfcf",
+    "text_muted": "#888888",
+
+    "_comment_semantic": "Phase 2 amber works on dark; success/error are dashboard-conventional",
+    "success": "#2ca02c",
+    "warning": "#e9c46a",
+    "error": "#d62728",
+    "phase_2": "#e9c46a"
+  },
+
+  "typography": {
+    "font_family_sans": "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+    "font_family_mono": "ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace",
+    "font_size_base": "16px",
+    "font_size_h1": "2.5rem",
+    "font_size_h2": "2rem",
+    "font_size_h3": "1.5rem",
+    "font_size_h4": "1.25rem",
+    "font_size_metric_value": "24px",
+    "font_size_metric_label": "12px",
+    "font_size_small": "0.875rem",
+    "font_weight_regular": 400,
+    "font_weight_medium": 500,
+    "font_weight_semibold": 600,
+    "font_weight_bold": 700,
+    "line_height_body": 1.6,
+    "line_height_heading": 1.2
+  },
+
+  "spacing": {
+    "xs": "0.25rem",
+    "sm": "0.5rem",
+    "md": "1rem",
+    "lg": "1.5rem",
+    "xl": "2rem",
+    "2xl": "3rem",
+    "3xl": "4rem",
+    "metric_card_padding": "12px 16px"
+  },
+
+  "radii": {
+    "sm": "4px",
+    "md": "8px",
+    "lg": "12px",
+    "pill": "9999px"
+  },
+
+  "shadows": {
+    "sm": "0 1px 2px rgba(0,0,0,0.3)",
+    "md": "0 4px 6px rgba(0,0,0,0.4)",
+    "lg": "0 10px 15px rgba(0,0,0,0.5)"
+  },
+
+  "charts": {
+    "_comment": "Plotly-friendly palette. Brand-blue primary; remaining colors match Plotly conventions used in alpha-engine-dashboard charts/.",
+    "categorical": ["#1a73e8", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#7f7f7f"],
+    "diverging": ["#d62728", "#1a1f2e", "#2ca02c"],
+    "sequential": ["#0e1117", "#1a1f2e", "#1a73e8", "#4a9af5", "#fafafa"],
+    "portfolio_line": "#1a73e8",
+    "spy_baseline": "#7f7f7f",
+    "ic_positive": "#2ca02c",
+    "ic_negative": "#d62728"
+  }
+}
