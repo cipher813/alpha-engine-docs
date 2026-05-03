@@ -48,7 +48,7 @@ The presentation layer leads with reliability and measurement, not returns. Long
 | **Backtester** | [`alpha-engine-backtester`](https://github.com/cipher813/alpha-engine-backtester) | Weekly evaluator + autonomous optimizers writing 4 configs to S3 (scoring weights, executor params, predictor veto, research params) | Deeper attribution showing which signal sources actually drive returns; regime-conditional config sets; more frequent retuning cadence as data accrues |
 | **Dashboard** | [`alpha-engine-dashboard`](https://github.com/cipher813/alpha-engine-dashboard) | Read-only Streamlit; portfolio, signals, predictor, retros — powers nousergon.ai (public) and dashboard.nousergon.ai (private, Cloudflare Access) | Signal lifecycle view; feedback-loop visualization; feature store + RAG inventory; `/metrics` validation page |
 
-Plus a private [`alpha-engine-config`](https://github.com/cipher813/alpha-engine-config) repo holding proprietary scoring weights, agent prompts, model parameters, and other tuned values. Disclosure boundary: architecture and approach are public; specific weights / prompts / thresholds are private.
+Plus two supporting repos: a public shared library [`alpha-engine-lib`](https://github.com/cipher813/alpha-engine-lib) (logging, freshness gates, trading-calendar arithmetic, ArcticDB helpers, agent decision capture, LLM cost tracking) used by all 6 modules, and a private [`alpha-engine-config`](https://github.com/cipher813/alpha-engine-config) repo holding proprietary scoring weights, agent prompts, model parameters, and other tuned values. Disclosure boundary: architecture and approach are public; specific weights, prompts, and thresholds are private.
 
 ## System architecture
 
