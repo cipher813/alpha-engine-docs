@@ -6,6 +6,42 @@ Canonical README structure for every public alpha-engine repo. Apply consistentl
 
 ---
 
+## Zones of responsibility — what lives where
+
+Module READMEs are **module-only content**. System-level content lives in `alpha-engine-docs/README.md`; live performance and detailed prose live on `nousergon.ai`. The same fact should not appear in two places — instead, link to the canonical home.
+
+| Content | `alpha-engine-docs` | This module's repo | `nousergon.ai` |
+|---|:---:|:---:|:---:|
+| System architecture diagram (all 6 modules) | ✅ canonical | ❌ — link out | ✅ /architecture |
+| Saturday + weekday Step Function pipelines | ✅ canonical | ❌ — link out | ✅ /architecture |
+| Phase trajectory (Phase 1/2/3/4 status) | ✅ canonical | ❌ — banner badge only | ✅ home page |
+| 4-capability narrative ("What this is") | ✅ canonical | ❌ | ✅ home page |
+| Modules table (all 6 modules described) | ✅ canonical | ❌ — sister-repos minimal links only | ✅ home page |
+| Autonomous feedback loop (cross-module) | ✅ canonical | ❌ — link out | ✅ /architecture |
+| Headline metrics, live alpha curve | ❌ — link only | ❌ | ✅ canonical (/metrics) |
+| Public retros / postmortems | ❌ — link only | ❌ — link out | ✅ canonical (/retros) |
+| Blog posts | ❌ — link only | ❌ | ✅ canonical (/blog) |
+| **Module's role + Today + Where it's headed** | ✅ row in modules table | ✅ canonical (in this README) | ✅ /Docs page |
+| Module-internal architecture diagram | ❌ | ✅ canonical | ✅ /Docs page |
+| Module's key files annotated | ❌ | ✅ canonical (here + OVERVIEW.md) | ❌ |
+| Quick start / running locally | ❌ | ✅ canonical | ❌ |
+| Module's deployment + schedule | ❌ | ✅ canonical | ❌ |
+| Module's configuration | ❌ | ✅ canonical | ❌ |
+| Module's failure modes + retros | ❌ — covered in docs cross-cutting | ✅ canonical | ✅ /retros |
+| Brand banner (one-line disambiguation) | ✅ verbatim | ✅ verbatim | ✅ implicit |
+| License (MIT) | ✅ | ✅ | (footer) |
+
+**Rule of thumb:** if a recruiter who's already read `alpha-engine-docs/README.md` and `nousergon.ai` would learn nothing new from a section in your module README, drop or compress that section. Each surface should answer the *next* question the prior one prompted.
+
+**Specifically do NOT duplicate from `alpha-engine-docs`:**
+- The Phase trajectory table (use the Phase 2 badge instead)
+- The full Modules table with all 6 module descriptions (use a minimal Sister Repos links table)
+- The full system architecture mermaid (use a hero diagram that highlights *this* module's role only)
+- The Saturday/weekday SF pipeline flowcharts (link out)
+- The autonomous feedback loop table (link out)
+
+---
+
 ## Section order (locked)
 
 1. **H1 title** — repo name (`alpha-engine-<module>`)
