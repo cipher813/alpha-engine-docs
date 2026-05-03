@@ -19,10 +19,10 @@ A multi-agent orchestration system that researches, decides, and acts — and me
 
 Four capabilities define the system:
 
-- **Multi-agent orchestration** — six LangGraph sector teams, a CIO, and a macro economist coordinate over a shared decision substrate, scanning ~900 stocks weekly. Explicit gating, peer review, and an LLM-as-judge layer evaluate output quality at each stage.
-- **Stacked meta-ensemble prediction** — Layer-1 specialized LightGBM components feed a Layer-2 Ridge meta-learner. Predictions flow into a downstream risk-gated executor.
-- **Autonomous self-improvement** — a backtester evaluates the system's own outputs each week, runs parameter sweeps, and writes optimized configs back to S3. Research, predictor, and executor read those configs on cold-start. The system tunes itself without manual intervention.
-- **End-to-end measurement substrate** — every signal, prediction, fill, and dollar of P&L is instrumented and traceable. The presentation layer is a view, not a measurement layer; numbers source from existing module outputs.
+- **Multi-agent orchestration** — six LangGraph sector teams, a CIO, and a macro economist scan the S&P 500+400 (~900 stocks) weekly. Each sector team runs a quant ReAct → qual ReAct → peer review flow before submitting 2–3 recommendations. The CIO gates new entrants per a configurable cap. Outputs at key stages are evaluated by a rubric-based LLM-as-judge layer.
+- **Stacked meta-ensemble prediction** — three specialized Layer-1 models (LightGBM momentum, LightGBM volatility, and a research-score calibrator) feed a Layer-2 Ridge meta-learner alongside research-context and raw macro features. Predictions flow into a downstream risk-gated executor.
+- **Autonomous self-improvement** — a backtester evaluates the system's own outputs each week, runs parameter sweeps, and writes four optimized configs back to S3. Research, predictor, and executor read those configs on cold-start; the system retunes itself weekly without manual intervention.
+- **End-to-end measurement substrate** — signals are persisted to `research.db` and `signals.json`, predictions to `predictions/{date}.json`, fills to a SQLite trade log backed up to S3, and daily P&L to `eod_pnl.csv`. The presentation layer is a view, not a measurement layer; numbers source from existing module outputs.
 
 The substrate is equities; the pattern is general. The orchestration, measurement, and learning loops apply anywhere multi-agent collaboration and durable instrumentation matter.
 
@@ -49,7 +49,7 @@ Each repo is a single module with one responsibility. Public READMEs follow a [s
 |---|---|---|---|
 | **Data** | [`alpha-engine-data`](https://github.com/cipher813/alpha-engine-data) | Centralized ArcticDB feature store, macro indicators, alternative data; first step in both Step Functions | Feature coverage + freshness, data-quality flags |
 | **Research** | [`alpha-engine-research`](https://github.com/cipher813/alpha-engine-research) | LangGraph multi-agent investment research — 6 sector teams + CIO + macro economist; ~900-stock weekly scan | Composite scores + sub-score attribution, LLM-as-judge rubric scores |
-| **Predictor** | [`alpha-engine-predictor`](https://github.com/cipher813/alpha-engine-predictor) | Stacked meta-ensemble — 4 specialized Layer-1 LightGBM components feeding a Layer-2 Ridge meta-learner; 5-day market-relative alpha + veto gate | Ensemble IC (L2) + per-L1 component IC, calibration |
+| **Predictor** | [`alpha-engine-predictor`](https://github.com/cipher813/alpha-engine-predictor) | Stacked meta-ensemble — Layer-1 LightGBM momentum + LightGBM volatility + research-score calibrator feed a Layer-2 Ridge meta-learner; 5-day market-relative alpha + veto gate | Ensemble IC (L2) + per-L1 component IC, calibration |
 | **Executor** | [`alpha-engine`](https://github.com/cipher813/alpha-engine) | Risk-gated position sizing, intraday entry triggers (pullback / VWAP / support / time-expiry), trailing stops; IB Gateway via IBC | Fill stats, slippage, sizing decision attribution |
 | **Backtester** | [`alpha-engine-backtester`](https://github.com/cipher813/alpha-engine-backtester) | Signal quality evaluation, regime + score-bucket analysis, 6 autonomous optimizers; auto-applies configs to S3 each week | Signal accuracy 10d/30d, attribution, optimizer convergence |
 | **Dashboard** | [`alpha-engine-dashboard`](https://github.com/cipher813/alpha-engine-dashboard) | Read-only Streamlit monitoring — portfolio, signals, system report card; powers both [nousergon.ai](https://nousergon.ai) (public) and `dashboard.nousergon.ai` (private, Cloudflare Access) | (Surfaces what the others measure) |
@@ -65,7 +65,7 @@ flowchart LR
         RAG[RAG Ingestion]
         Research[Research: 6 sector teams + CIO]
         Data2[Data: alternative data]
-        Train[Predictor Training: L1 GBMs + L2 Ridge]
+        Train[Predictor Training: L1 momentum + vol GBMs + research calibrator + L2 Ridge]
         Backtest[Backtester: evaluator + optimizers]
     end
 
@@ -108,7 +108,7 @@ flowchart TD
     RAG[RAGIngestion<br/>EC2 SSM · 30 min<br/><i>SEC filings · 8-Ks · earnings · theses</i>] --> R
     R[Research<br/>Lambda · 15 min<br/><i>signals.json</i>] --> P2
     P2[DataPhase2<br/>Lambda · 10 min<br/><i>alternative data</i>] --> Train
-    Train[PredictorTraining<br/>EC2 spot · 90 min<br/><i>L1 GBMs + L2 Ridge meta-learner</i>] --> BT
+    Train[PredictorTraining<br/>EC2 spot · 90 min<br/><i>L1 momentum/vol GBMs + research calibrator + L2 Ridge meta-learner</i>] --> BT
     BT[Backtester<br/>EC2 spot · 120 min<br/><i>signal quality + param optimization</i>] --> Notify
     Notify[NotifyComplete<br/>SNS]
 ```
