@@ -15,18 +15,18 @@ Canonical system-overview entry point for the Nous Ergon Alpha Engine project. S
 
 ## What this is
 
-A fully-fleshed-out **multi-agent orchestration system that makes decisions, measures its own behavior, and improves itself over time** — using equities trading as the substrate where decisions, metrics, and outcomes are unambiguous and continuously verifiable.
+A multi-agent orchestration system that researches, decides, and acts — and measures and tunes itself in the process. Equities trading is the substrate: a domain where decisions are unambiguous, outcomes are continuously verifiable, and agentic behavior is observable end-to-end.
 
-The technical pattern on display:
+Four capabilities define the system:
 
-- **Multi-agent orchestration** — six LangGraph sector teams + a CIO + a macro economist coordinating across a shared decision substrate, ~900 stocks scanned weekly, with explicit gating, peer review, and an LLM-as-judge layer for output quality
-- **Stacked meta-ensemble** — Layer-1 specialized LightGBM components feeding a Layer-2 Ridge meta-learner; predictions consumed by a downstream risk-gated executor
-- **Autonomous self-improvement** — a backtester evaluates the system's own outputs each week, runs parameter sweeps, and writes optimized configs back to S3. Research, predictor, and executor read those configs on cold-start. The system tunes itself.
-- **End-to-end measurement substrate** — every signal, prediction, fill, and dollar of P&L is instrumented and traceable. The presentation layer is a view; numbers source from existing module outputs, not ad-hoc dashboard computation.
+- **Multi-agent orchestration** — six LangGraph sector teams, a CIO, and a macro economist coordinate over a shared decision substrate, scanning ~900 stocks weekly. Explicit gating, peer review, and an LLM-as-judge layer evaluate output quality at each stage.
+- **Stacked meta-ensemble prediction** — Layer-1 specialized LightGBM components feed a Layer-2 Ridge meta-learner. Predictions flow into a downstream risk-gated executor.
+- **Autonomous self-improvement** — a backtester evaluates the system's own outputs each week, runs parameter sweeps, and writes optimized configs back to S3. Research, predictor, and executor read those configs on cold-start. The system tunes itself without manual intervention.
+- **End-to-end measurement substrate** — every signal, prediction, fill, and dollar of P&L is instrumented and traceable. The presentation layer is a view, not a measurement layer; numbers source from existing module outputs.
 
-**The engineering achievement is the orchestration + measurement + self-improvement pattern, regardless of any week's trading performance.** Data gathering and transparency are the headline; trading P&L is one of many surfaces the system measures and will eventually optimize against. The pattern generalizes to any domain where multi-agent collaboration, durable measurement, and learning loops matter.
+The substrate is equities; the pattern is general. The orchestration, measurement, and learning loops apply anywhere multi-agent collaboration and durable instrumentation matter.
 
-**The current chapter is Phase 2: Reliability Buildout** — making the measurement substrate trustworthy enough that Phase 3 (parameter tuning toward sustained outperformance) operates on solid ground. Long-term alpha (portfolio return minus SPY, risk-adjusted) is the eventual target Phase 3 is engineered to inflect toward; it is not a present-tense claim.
+The current chapter is **Phase 2: Reliability Buildout** — making the measurement substrate trustworthy enough that Phase 3 (parameter tuning toward sustained outperformance) operates on solid ground. Long-term alpha (portfolio return minus SPY, risk-adjusted) is the eventual target Phase 3 is engineered to inflect toward; it is not a present-tense claim.
 
 ## Phase trajectory
 
