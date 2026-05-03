@@ -52,7 +52,7 @@ Plus two supporting repos: a public shared library [`alpha-engine-lib`](https://
 
 ## System architecture
 
-Module-level data flow. Three Step Functions — Saturday, weekday morning, and EOD — orchestrate the modules; per-pipeline orchestration diagrams follow.
+Module-level data flow. Three Step Functions — weekly, weekday morning, and EOD — orchestrate the modules; per-pipeline orchestration diagrams follow.
 
 ```mermaid
 flowchart LR
@@ -81,7 +81,7 @@ flowchart LR
     Backtester -.read-only.-> Dashboard
 ```
 
-### Saturday pipeline — `alpha-engine-saturday-pipeline`
+### Weekly pipeline — `alpha-engine-saturday-pipeline`
 
 EventBridge `cron(0 0 ? * SAT *)` — Sat 00:00 UTC (Fri 5–8 PM PT).
 
