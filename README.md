@@ -15,13 +15,11 @@ Canonical system-overview entry point for the Nous Ergon Alpha Engine project. S
 
 ## What this is
 
-An autonomous trading research system that uses LLM-driven research, gradient-boosted machine learning, and quantitative signal scoring to predict 5-day market-relative returns. The objective is **long-term alpha**:
+Six modules that collaborate autonomously to source, score, and act on equity trade ideas — the **Autonomous Multi-Agent Trading System**.
 
-```
-Alpha = Portfolio Return − SPY Return
-```
+A **multi-agent LLM research stack** (LangGraph, six sector teams, a CIO, a macro economist, RAG over SEC filings + earnings + theses) generates weekly investment theses across the S&P 500+400. A **stacked meta-ensemble predictor** (Layer-1 LightGBM components + Layer-2 Ridge meta-learner) produces 5-day market-relative predictions. A **risk-gated executor** sizes positions and places paper trades through Interactive Brokers. A **backtester** closes the loop, auto-applying optimized parameters back to research, predictor, and executor configs each week.
 
-Six modules collaborate through a shared S3 bucket and two AWS Step Functions. A backtester closes the loop by autonomously applying optimized parameters back to research, predictor, and executor configs each week.
+**The current chapter is Phase 2: Reliability Buildout** — making sure the measurement substrate is mature enough that Phase 3 alpha tuning operates on trustworthy data. Returns are not the headline yet; instrumentation is. Long-term alpha (portfolio return minus SPY, risk-adjusted) is the eventual target Phase 3 is engineered to inflect toward.
 
 ## Phase trajectory
 
