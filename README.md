@@ -52,41 +52,33 @@ Plus a private [`alpha-engine-config`](https://github.com/cipher813/alpha-engine
 
 ## System architecture
 
+Module-level data flow. Three Step Functions — Saturday, weekday morning, and EOD — orchestrate the modules; per-pipeline orchestration diagrams follow.
+
 ```mermaid
 flowchart LR
-    subgraph WEEKLY[Saturday Step Function]
-        Data1[Data: prices · macro · universe · feature store]
-        RAG[RAG Ingestion]
-        Research[Research: 6 sector teams + CIO]
-        Data2[Data: alternative data]
-        Train[Predictor Training: L1 momentum + vol GBMs + research calibrator + L2 Ridge]
-        Backtest[Backtester: evaluator + optimizers]
-    end
+    Data[Data<br/>prices · macro · features<br/>RAG corpus]
+    Research[Research<br/>6 sector teams + CIO + macro economist<br/>incl. LLM-as-judge]
+    Predictor[Predictor<br/>L1 momentum/vol GBMs + research calibrator<br/>+ L2 Ridge meta-learner]
+    Executor[Executor<br/>risk-gated sizing + intraday daemon]
+    Backtester[Backtester<br/>eval + parity + 4 config optimizers]
+    Dashboard[Dashboard<br/>nousergon.ai + dashboard.nousergon.ai]
 
-    subgraph DAILY[Weekday Step Function]
-        DailyData[Daily Data: closes · macro refresh · feature compute]
-        Inference[Predictor Inference]
-        Plan[Executor Planner]
-        Daemon[Executor Daemon]
-        EOD[EOD Reconcile]
-    end
+    Data --> Research
+    Data --> Predictor
+    Research --> Predictor
+    Research --> Executor
+    Predictor --> Executor
+    Executor --> Backtester
 
-    Data1 --> RAG --> Research --> Data2 --> Train --> Backtest
-    Backtest -.config auto-apply.-> Research
-    Backtest -.config auto-apply.-> Train
-    Backtest -.config auto-apply.-> Plan
+    Backtester -.config auto-apply.-> Research
+    Backtester -.config auto-apply.-> Predictor
+    Backtester -.config auto-apply.-> Executor
 
-    DailyData --> Inference --> Plan --> Daemon --> EOD
-
-    Research --> Inference
-    EOD --> Backtest
-
-    Dashboard[Dashboard: nousergon.ai + dashboard.nousergon.ai]
-    Data1 -.read-only.-> Dashboard
+    Data -.read-only.-> Dashboard
     Research -.read-only.-> Dashboard
-    Inference -.read-only.-> Dashboard
-    EOD -.read-only.-> Dashboard
-    Backtest -.read-only.-> Dashboard
+    Predictor -.read-only.-> Dashboard
+    Executor -.read-only.-> Dashboard
+    Backtester -.read-only.-> Dashboard
 ```
 
 ### Saturday pipeline — `alpha-engine-saturday-pipeline`
@@ -98,39 +90,37 @@ flowchart LR
     Trigger((Sat<br/>00:00 UTC)) --> P1
     P1[DataPhase1<br/>EC2 SSM<br/>30 min] --> RAG
     RAG[RAGIngestion<br/>EC2 SSM<br/>30 min] --> R
-    R[Research<br/>Lambda<br/>15 min] --> P2
+    R[Research<br/>Lambda · 15 min<br/><i>incl. LLM-as-judge</i>] --> P2
     P2[DataPhase2<br/>Lambda<br/>10 min] --> Train
     Train[PredictorTraining<br/>EC2 spot<br/>90 min] --> BT
-    BT[Backtester<br/>EC2 spot<br/>120 min] --> Notify((SNS))
+    BT[Backtester<br/>EC2 spot · 120 min<br/><i>eval + parity + 4 config optimizers</i>] --> Notify((SNS))
 ```
 
-### Weekday pipeline — `alpha-engine-weekday-pipeline`
+### Weekday morning pipeline — `alpha-engine-weekday-pipeline`
 
 EventBridge `cron(5 13 ? * MON-FRI *)` — 6:05 AM PT.
 
 ```mermaid
 flowchart LR
-    Trigger((6:05 AM PT)) --> DD
-    DD[DailyData<br/>EC2 SSM] --> Inf
+    Trigger((6:05 AM PT)) --> Inf
     Inf[PredictorInference<br/>Lambda] --> Start
-    Start[StartExecutorEC2] --> EX
-    EX[Executor Planner<br/>6:25 AM PT] --> DM
-    DM[Executor Daemon<br/>6:30 AM PT] --> Reconcile
-    Reconcile[EOD Reconcile<br/>1:20 PM PT] --> Stop((Stop EC2<br/>1:30 PM PT))
+    Start[StartExecutorEC2] --> Boot
+    Boot[Trading EC2 boots<br/>systemd] --> Plan
+    Plan[Executor Planner<br/>~6:15 AM PT] --> Daemon((Executor Daemon<br/>~6:20 AM PT))
 ```
 
-### Autonomous feedback loop
+The daemon runs through the trading day, executing urgent exits at open and timing entries via intraday triggers (pullback, VWAP, support, time-expiry). Daemon shutdown after close (~1:15 PM PT) triggers the EOD pipeline.
 
-The backtester is the system's learning mechanism. Each week it analyzes signal accuracy, runs param sweeps, and auto-applies optimized configs to S3 for downstream modules to read on cold-start.
+### EOD pipeline — `alpha-engine-eod-pipeline`
 
-| Config | Read by | Optimizer |
-|---|---|---|
-| `config/scoring_weights.json` | Research | Weight optimizer (data-driven scoring weight recommendations) |
-| `config/executor_params.json` | Executor | 60-trial random search over 6 risk params, ranked by Sharpe |
-| `config/predictor_params.json` | Predictor | Veto threshold auto-tune |
-| `config/research_params.json` | Research | Signal boost params (deferred until 200+ samples) |
+Triggered by daemon shutdown — single authoritative path, no redundant cron.
 
-Fully autonomous, no manual intervention required. This is the substrate Phase 3 alpha tuning operates on.
+```mermaid
+flowchart LR
+    Trigger((Daemon shutdown<br/>~1:15 PM PT)) --> Post
+    Post[PostMarketData<br/>SSM on ae-trading<br/><i>EOD OHLCV → ArcticDB</i>] --> EOD
+    EOD[EODReconcile<br/>NAV · α · positions<br/>trades.db + EOD email] --> Stop((StopTradingInstance))
+```
 
 ## License
 
